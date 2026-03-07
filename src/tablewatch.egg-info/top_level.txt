@@ -1,7 +1,0 @@
-detection
-events
-features
-game
-scripts
-streaming
-utils
