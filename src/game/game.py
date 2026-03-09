@@ -1,7 +1,6 @@
 from typing import List, Optional, Dict
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime, timezone
-import logging
 
 from .player import Player
 from .dealer import Dealer
@@ -11,8 +10,6 @@ from .hand import Hand
 from .house import HouseRules
 from .count import HiLoCount
 from .strategy import PlayerRole, ROLE_CONFIGS, Action
-
-logger = logging.getLogger(__name__)
 
 
 class GameEvent(BaseModel):
@@ -53,15 +50,14 @@ class BlackjackGame:
         players: List[Player],
         rules: HouseRules,
         num_decks: int = 6,
-        penetration: float = 0.75,
+        penetration: float = 0.6,
         table_min: float = 25.0,
         table_max: float = 5000.0,
-        verbose: bool = True,
         bench: Optional[List[Player]] = None,
     ):
         self.table_id = table_id
-        self.players = players
-        self.bench = bench or []
+        self.players = players.copy()
+        self.bench = (bench or []).copy() if bench else []
         self.rules = rules
         self.table_min = table_min
         self.table_max = table_max
@@ -70,47 +66,35 @@ class BlackjackGame:
         self.count = HiLoCount()
         self.events: List[GameEvent] = []
         self.hand_counter = 0
-        if not verbose:
-            logging.getLogger(__name__).disabled = True
 
     def play(self, num_rounds: int) -> List[GameEvent]:
-        logger.info(f"Starting {num_rounds} rounds on table {self.table_id}")
-
-        round_num = -1
-        for round_num in range(num_rounds):
+        for _ in range(num_rounds):
             if self.shoe.needs_shuffle:
                 self._shuffle()
 
-            self._play_round(round_num)
+            self._play_round()
             self._remove_quit_players()
 
             if not self.players and not self.bench:
-                logger.info("No players remaining, ending game")
                 break
 
-        logger.info(
-            f"Completed {round_num + 1} rounds, generated {len(self.events)} events"
-        )
         return self.events
 
-    def _play_round(self, round_num: int):
+    def _play_round(self):
         self.hand_counter += 1
         hand_id = f"{self.table_id}_H{self.hand_counter}"
         true_count = self.count.get_true_count(self.shoe.decks_remaining)
 
-        # 0. Wonging: handle mid-shoe entry/exit based on count
         self._handle_wonging(hand_id, true_count)
 
-        # 1. Team signals: spotters broadcast perceived count to teammates
         team_signals: Dict[str, float] = {}
         for player in self.players:
             if player.role == PlayerRole.SPOTTER and player.team_id:
                 perceived = player.strategy._perceived_count(true_count)
                 team_signals[player.team_id] = perceived
 
-        # 2. Collect bets
+        # Collect bets
         for player in self.players:
-            # Use team signal if player is on a team and signal exists
             signal = (
                 team_signals.get(player.team_id, true_count)
                 if player.team_id
@@ -144,7 +128,6 @@ class BlackjackGame:
                 )
             )
 
-        # 2. Deal initial cards
         for _ in range(2):
             for player in self.players:
                 card = self.shoe.draw()
@@ -160,18 +143,16 @@ class BlackjackGame:
         dealer_hand.add_card(dealer_hole)
         self.dealer.set_hand(dealer_hand)
 
-        # 3. Check for dealer blackjack
         if dealer_hand.is_blackjack:
-            self.count.update(dealer_hole)  # Count HiLo
+            self.count.update(dealer_hole)
             self._resolve_dealer_blackjack(hand_id)
             self._cleanup_round()
             return
 
-        # 4. Play each player's hands
         for player in self.players:
             self._play_player_hands(player, dealer_upcard, hand_id)
 
-        # 5. Dealer plays (only if at least one non-busted, non-blackjack hand needs resolution)
+        # Dealer plays (only if at least one non-busted, non-blackjack hand needs resolution)
         active_hands = sum(
             1
             for p in self.players
@@ -182,10 +163,7 @@ class BlackjackGame:
             self.count.update(dealer_hole)
             self._play_dealer_hand()
 
-        # 6. Resolve remaining hands
         self._resolve_hands(hand_id)
-
-        # 7. Cleanup
         self._cleanup_round()
 
     def _play_player_hands(self, player: Player, dealer_upcard: Card, hand_id: str):
@@ -211,9 +189,6 @@ class BlackjackGame:
                 continue
 
             while True:
-                logger.debug(
-                    f"{player.player_id} hand {hand_idx} value={hand.value} cards={[c.rank.value for c in hand.cards]}"
-                )
                 # Split aces: only one card dealt, no further action
                 if (
                     hand.is_split
@@ -281,7 +256,7 @@ class BlackjackGame:
                     break
 
                 elif action == Action.DOUBLE:
-                    player.place_bet(hand.bet)  # charge original bet before doubling
+                    player.place_bet(hand.bet)
                     hand.double_down()
                     card = self.shoe.draw()
                     self.count.update(card)
@@ -293,16 +268,13 @@ class BlackjackGame:
                     new_hand = Hand(cards=[split_card], bet=hand.bet, is_split=True)
                     player.place_bet(hand.bet)
                     player.add_hand(new_hand)
-                    # Deal one card to each split hand
                     c1 = self.shoe.draw()
                     self.count.update(c1)
                     hand.add_card(c1)
                     c2 = self.shoe.draw()
                     self.count.update(c2)
                     new_hand.add_card(c2)
-                    # Queue new hand for play in this round
                     hands_to_play.append(new_hand)
-                    # Split aces: no further action on current hand either
                     if hand.cards[0].rank.value == 1:
                         break
 
@@ -413,7 +385,6 @@ class BlackjackGame:
         self.dealer.clear_hand()
 
     def _shuffle(self):
-        logger.info(f"Shuffling shoe on table {self.table_id}")
         self.shoe._reset_shoe()
         self.count.reset()
 
@@ -458,9 +429,6 @@ class BlackjackGame:
                         cards_remaining=self.shoe.cards_remaining,
                     )
                 )
-                logger.info(
-                    f"{player.player_id} ({player.role.value}) sits down at TC={true_count:.1f}"
-                )
 
         exiting = []
         for player in self.players[:]:
@@ -486,9 +454,6 @@ class BlackjackGame:
                         cards_remaining=self.shoe.cards_remaining,
                     )
                 )
-                logger.info(
-                    f"{player.player_id} ({player.role.value}) leaves table at TC={true_count:.1f}"
-                )
 
     def _remove_quit_players(self):
         all_players = self.players + self.bench
@@ -499,22 +464,11 @@ class BlackjackGame:
                     self.players.remove(player)
                 if player in self.bench:
                     self.bench.remove(player)
-
-                reason = "win_target" if player.hit_win_target() else "stop_loss"
-                logger.info(
-                    f"{player.player_id} ({player.role.value}) quit session: {reason} "
-                    f"(P&L: ${player.net_profit:,.0f})"
-                )
             elif not player.can_bet:
                 if player in self.players:
                     self.players.remove(player)
                 if player in self.bench:
                     self.bench.remove(player)
-
-                logger.info(
-                    f"{player.player_id} ({player.role.value}) quit session: bankrupt "
-                    f"(P&L: ${player.net_profit:,.0f})"
-                )
 
     def _get_team_signals(self, true_count: float) -> Dict[str, float]:
         signals = {}

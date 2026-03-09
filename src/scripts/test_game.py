@@ -15,11 +15,11 @@ def make_team_player(
     config = ROLE_CONFIGS[role]
 
     if role == PlayerRole.BIG_PLAYER:
-        max_loss_pct = 1.0  # can lose 1x bankroll
+        max_loss_pct = 1.0
         max_win_pct = 2.0
     else:
-        max_loss_pct = 0.5  # default 50% stop-loss
-        max_win_pct = 1.0  # default 100% win target
+        max_loss_pct = 0.5
+        max_win_pct = 1.0
 
     return Player(
         player_id=player_id,
@@ -62,12 +62,10 @@ def run_scenario(scenario_name: str, active_players, bench_players, num_rounds=1
         penetration=0.6,
         table_min=25.0,
         table_max=5000.0,
-        verbose=True,
     )
 
     events = game.play(num_rounds)
-
-    # Aggregate results
+    
     all_players = active_players + bench_players
     total_pl = 0
     for player in all_players:
@@ -76,20 +74,15 @@ def run_scenario(scenario_name: str, active_players, bench_players, num_rounds=1
         sign = "+" if profit > 0 else "" if profit == 0 else "-"
         role_display = f"[{player.role.value}]"
         team_display = f" (team: {player.team_id})" if player.team_id else ""
-
-        status = " (never seated)" if player.total_hands == 0 else ""
-
         print(
             f"  {player.player_id:<20} {role_display:<18} {team_display:<15}"
             f"  hands: {player.total_hands:<4}"
-            f"  P&L: {sign}${abs(profit):>7.0f}{status}"
+            f"  P&L: {sign}${abs(profit):>7.0f}"
         )
 
-    # Event breakdown
     type_counts = Counter(e.event_type for e in events)
     print(f"\n  Event breakdown: {dict(type_counts)}")
 
-    # Wonging statistics
     seat_events = [e for e in events if e.event_type == "seat"]
     unseat_events = [e for e in events if e.event_type == "unseat"]
 
@@ -111,7 +104,6 @@ def run_scenario(scenario_name: str, active_players, bench_players, num_rounds=1
             )
             print(f"    Avg entry TC:      {avg_entry_tc:.2f}")
 
-    # Team bet correlation (if teams exist)
     teams = {p.team_id for p in all_players if p.team_id}
     if teams:
         print(f"\n  Team Analysis:")
@@ -148,6 +140,7 @@ def main():
                 "counter_diana", PlayerRole.BACK_COUNTER, "team_omega", 50000, rules
             ),
         ],
+        num_rounds=1000000
     )
     # run_scenario(
     #     "Casual player",
