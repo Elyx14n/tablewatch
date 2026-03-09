@@ -1,16 +1,86 @@
-from typing import Literal, Dict
+from typing import Literal, Dict, Optional
+from enum import Enum
 import random
 
 from .hand import Hand
 from .card import Card, Rank
 from .house import HouseRules
 
+SPREAD_1_TO_1 = {
+    -2: 1,
+    -1: 1,
+    0: 1,
+    1: 1,
+    2: 1,
+    3: 1,
+    4: 1,
+    5: 1,
+}
 SPREAD_1_TO_6 = {-2: 1, -1: 1, 0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6}
+SPREAD_1_TO_8 = {-2: 1, -1: 1, 0: 1, 1: 2, 2: 4, 3: 6, 4: 8, 5: 8}
 SPREAD_1_TO_10 = {-2: 1, -1: 1, 0: 1, 1: 2, 2: 4, 3: 6, 4: 8, 5: 10}
 SPREAD_1_TO_12 = {-2: 1, -1: 1, 0: 1, 1: 2, 2: 4, 3: 8, 4: 12, 5: 12}
 SPREAD_1_TO_20 = {-2: 1, -1: 1, 0: 1, 1: 4, 2: 8, 3: 12, 4: 16, 5: 20}
+SPREAD_MAX_ONLY = {
+    -2: 1,
+    -1: 1,
+    0: 1,
+    1: 1,
+    2: 1,
+    3: 1,
+    4: 1,
+    5: 1,
+}
 
-Action = Literal["H", "S", "D", "SP", "SR"]
+
+class PlayerRole(Enum):
+    CASUAL = "casual"
+    SPOTTER = "spotter"
+    BACK_COUNTER = "back_counter"
+    BIG_PLAYER = "big_player"
+
+
+ROLE_CONFIGS = {
+    PlayerRole.CASUAL: {
+        "skill": None,
+        "counting": None,
+        "bet_spread": None,
+        "kelly_unit": None,
+        "entry_tc": None,
+        "exit_tc": None,
+    },
+    PlayerRole.SPOTTER: {
+        "skill": 1.0,
+        "counting": 1.0,
+        "bet_spread": SPREAD_1_TO_1,
+        "kelly_unit": 0.0,
+        "entry_tc": None,
+        "exit_tc": None,
+    },
+    PlayerRole.BACK_COUNTER: {
+        "skill": 1.0,
+        "counting": 1.0,
+        "bet_spread": SPREAD_1_TO_6,
+        "kelly_unit": 0.3,
+        "entry_tc": 2,
+        "exit_tc": 0,
+    },
+    PlayerRole.BIG_PLAYER: {
+        "skill": 1.0,
+        "counting": 0.0,
+        "bet_spread": SPREAD_1_TO_20,
+        "kelly_unit": 0.8,
+        "entry_tc": 1,
+        "exit_tc": -1,
+    },
+}
+
+class Action(Enum):
+    HIT = "H"
+    STAND = "S"
+    DOUBLE = "D"
+    SPLIT = "SP"
+    SURRENDER = "SR"
 
 # Basic Strategy Charts
 PAIR_SPLITS = {
@@ -74,13 +144,9 @@ class Strategy:
         self.counting = max(0.0, min(1.0, counting))
         self.bet_spread = bet_spread or SPREAD_1_TO_12
         self.kelly_unit = max(0.0, min(1.0, kelly_unit))
-
-        self._setup_strategy_charts()
-
-    def _setup_strategy_charts(self):
-        self.pair_splits = {k: v.copy() for k, v in PAIR_SPLITS.items()}
         self.soft_totals = {k: v.copy() for k, v in SOFT_TOTALS.items()}
         self.hard_totals = {k: v.copy() for k, v in HARD_TOTALS.items()}
+        self.pair_splits = {k: v.copy() for k, v in PAIR_SPLITS.items()}
         self.surrender = {k: v.copy() for k, v in SURRENDER.items()}
 
         # Adjust for DAS
@@ -157,38 +223,44 @@ class Strategy:
         if can_surrender and self.rules.late_surrender:
             if not hand.is_soft and not hand.is_pair and hand.value in self.surrender:
                 if self.surrender[hand.value][dealer_idx]:
-                    return "SR"
+                    return Action.SURRENDER
         if can_split and hand.is_pair:
             pair_val = 1 if hand.cards[0].rank.value == 1 else hand.cards[0].rank.value
             if self.pair_splits.get(pair_val, [False] * 10)[dealer_idx]:
-                return "SP"
+                return Action.SPLIT
         if hand.is_soft:
             aceless = sum(c.value for c in hand.cards if c.rank != Rank.ACE)
             if aceless <= 10:
-                action = self.soft_totals.get(aceless, ["H"] * 10)[dealer_idx]
-                return "H" if action == "D" and not can_double else action
+                action = Action(self.soft_totals.get(aceless, ["H"] * 10)[dealer_idx])
+                return Action.HIT if action == Action.DOUBLE and not can_double else action
         if hand.value <= 8:
-            return "H"
+            return Action.HIT
         if hand.value >= 17:
-            return "S"
+            return Action.STAND
 
-        action = self.hard_totals.get(hand.value, ["H"] * 10)[dealer_idx]
-        return "H" if action == "D" and not can_double else action
+        action = Action(self.hard_totals.get(hand.value, ["H"] * 10)[dealer_idx])
+        return Action.HIT if action == Action.DOUBLE and not can_double else action
 
     def _random_action(
         self, can_double: bool, can_split: bool, can_surrender: bool
     ) -> Action:
-        options = ["H", "S"]
+        options: list[Action] = [Action.HIT, Action.STAND]
         if can_double:
-            options.append("D")
+            options.append(Action.DOUBLE)
         if can_split:
-            options.append("SP")
+            options.append(Action.SPLIT)
         if can_surrender:
-            options.append("SR")
+            options.append(Action.SURRENDER)
         return random.choice(options)
 
     def _get_dealer_index(self, dealer_upcard: Card) -> int:
         return 0 if dealer_upcard.rank == Rank.ACE else dealer_upcard.value - 1
+
+    def _perceived_count(self, true_count: float) -> float:
+        if self.counting < 0.1:
+            return 0.0
+        noise = (1.0 - self.counting) * 2.0
+        return true_count + random.gauss(0, noise)
 
     def calculate_bet(
         self,
@@ -196,25 +268,26 @@ class Strategy:
         table_max: float,
         bankroll: float,
         true_count: float = 0.0,
+        initial_bankroll: float | None = None,
     ) -> float:
         if bankroll <= 0:
             return 0.0
 
-        if self.counting < 0.1:
-            return min(table_min, bankroll)
-
-        noise = (1.0 - self.counting) * 2.0
-        perceived_count = true_count + random.gauss(0, noise)
+        perceived_count = self._perceived_count(true_count) if self.counting >= 0.1 else true_count
 
         if self.kelly_unit > 0:
             # Dynamic unit: Kelly-calibrated so that the max-spread bet at the highest
             # TC key equals kelly_unit * Kelly-optimal at that count.
             # Hi-Lo edge approximation: each TC unit above +1 adds ~0.5% player edge.
             # Variance per hand ≈ 1.3 for standard 6-deck blackjack.
+            # Use initial_bankroll for Kelly sizing to avoid death spiral
+            kelly_bankroll = initial_bankroll if initial_bankroll is not None else bankroll
             max_multiplier = max(self.bet_spread.values())
             max_tc = max(self.bet_spread.keys())
             edge_at_max = max(0.0, (max_tc - 1) * 0.005)
-            dynamic_unit = (bankroll * self.kelly_unit * edge_at_max / 1.3) / max_multiplier
+            dynamic_unit = (
+                kelly_bankroll * self.kelly_unit * edge_at_max / 1.3
+            ) / max_multiplier
             unit = max(table_min, dynamic_unit)
         else:
             unit = table_min

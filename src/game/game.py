@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime, timezone
 import logging
@@ -10,6 +10,7 @@ from .card import Card
 from .hand import Hand
 from .house import HouseRules
 from .count import HiLoCount
+from .strategy import PlayerRole, ROLE_CONFIGS, Action
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +20,12 @@ class GameEvent(BaseModel):
     timestamp: datetime
     table_id: str
     hand_id: str
-    event_type: str  # 'bet', 'action', 'outcome', 'shuffle'
+    event_type: str  # 'bet', 'action', 'outcome', 'shuffle', 'seat', 'unseat'
 
     # Player context
     player_id: Optional[str] = None
+    player_role: Optional[str] = None
+    team_id: Optional[str] = None
 
     # Game state
     true_count: Optional[float] = None
@@ -54,9 +57,11 @@ class BlackjackGame:
         table_min: float = 25.0,
         table_max: float = 5000.0,
         verbose: bool = True,
+        bench: Optional[List[Player]] = None,
     ):
         self.table_id = table_id
         self.players = players
+        self.bench = bench or []
         self.rules = rules
         self.table_min = table_min
         self.table_max = table_max
@@ -68,17 +73,18 @@ class BlackjackGame:
         if not verbose:
             logging.getLogger(__name__).disabled = True
 
-    def play_rounds(self, num_rounds: int) -> List[GameEvent]:
+    def play(self, num_rounds: int) -> List[GameEvent]:
         logger.info(f"Starting {num_rounds} rounds on table {self.table_id}")
 
+        round_num = -1
         for round_num in range(num_rounds):
             if self.shoe.needs_shuffle:
                 self._shuffle()
 
             self._play_round(round_num)
-            self.players = [p for p in self.players if p.bankroll >= self.table_min]
+            self._remove_quit_players()
 
-            if not self.players:
+            if not self.players and not self.bench:
                 logger.info("No players remaining, ending game")
                 break
 
@@ -90,14 +96,33 @@ class BlackjackGame:
     def _play_round(self, round_num: int):
         self.hand_counter += 1
         hand_id = f"{self.table_id}_H{self.hand_counter}"
+        true_count = self.count.get_true_count(self.shoe.decks_remaining)
 
-        # 1. Collect bets
+        # 0. Wonging: handle mid-shoe entry/exit based on count
+        self._handle_wonging(hand_id, true_count)
+
+        # 1. Team signals: spotters broadcast perceived count to teammates
+        team_signals: Dict[str, float] = {}
         for player in self.players:
+            if player.role == PlayerRole.SPOTTER and player.team_id:
+                perceived = player.strategy._perceived_count(true_count)
+                team_signals[player.team_id] = perceived
+
+        # 2. Collect bets
+        for player in self.players:
+            # Use team signal if player is on a team and signal exists
+            signal = (
+                team_signals.get(player.team_id, true_count)
+                if player.team_id
+                else true_count
+            )
+
             bet = player.strategy.calculate_bet(
                 table_min=self.table_min,
                 table_max=self.table_max,
                 bankroll=player.bankroll,
-                true_count=self.count.get_true_count(self.shoe.decks_remaining),
+                true_count=signal,
+                initial_bankroll=player.initial_bankroll,
             )
 
             player.place_bet(bet)
@@ -111,8 +136,10 @@ class BlackjackGame:
                     hand_id=hand_id,
                     event_type="bet",
                     player_id=player.player_id,
+                    player_role=player.role.value,
+                    team_id=player.team_id,
                     bet_amount=bet,
-                    true_count=self.count.get_true_count(self.shoe.decks_remaining),
+                    true_count=true_count,
                     cards_remaining=self.shoe.cards_remaining,
                 )
             )
@@ -146,7 +173,8 @@ class BlackjackGame:
 
         # 5. Dealer plays (only if at least one non-busted, non-blackjack hand needs resolution)
         active_hands = sum(
-            1 for p in self.players
+            1
+            for p in self.players
             for h in p.hands
             if not h.is_busted and not h.is_blackjack
         )
@@ -183,8 +211,15 @@ class BlackjackGame:
                 continue
 
             while True:
+                logger.debug(
+                    f"{player.player_id} hand {hand_idx} value={hand.value} cards={[c.rank.value for c in hand.cards]}"
+                )
                 # Split aces: only one card dealt, no further action
-                if hand.is_split and hand.cards[0].rank.value == 1 and len(hand.cards) == 2:
+                if (
+                    hand.is_split
+                    and hand.cards[0].rank.value == 1
+                    and len(hand.cards) == 2
+                ):
                     break
 
                 if hand.is_busted:
@@ -208,7 +243,11 @@ class BlackjackGame:
                     and len(hand.cards) == 2
                     and len(player.hands) <= self.rules.max_splits
                     and player.bankroll >= hand.bet
-                    and (self.rules.resplit_aces or not hand.is_split or hand.cards[0].rank.value != 1)
+                    and (
+                        self.rules.resplit_aces
+                        or not hand.is_split
+                        or hand.cards[0].rank.value != 1
+                    )
                 )
                 action = player.strategy.get_action(
                     hand=hand,
@@ -226,22 +265,22 @@ class BlackjackGame:
                         hand_id=hand_id,
                         event_type="action",
                         player_id=player.player_id,
-                        action=action,
+                        action=action.name,
                         player_hand_value=hand.value,
                         dealer_upcard_value=dealer_upcard.value,
                         true_count=self.count.get_true_count(self.shoe.decks_remaining),
                     )
                 )
 
-                if action == "H":
+                if action == Action.HIT:
                     card = self.shoe.draw()
                     self.count.update(card)
                     hand.add_card(card)
 
-                elif action == "S":
+                elif action == Action.STAND:
                     break
 
-                elif action == "D":
+                elif action == Action.DOUBLE:
                     player.place_bet(hand.bet)  # charge original bet before doubling
                     hand.double_down()
                     card = self.shoe.draw()
@@ -249,7 +288,7 @@ class BlackjackGame:
                     hand.add_card(card)
                     break
 
-                elif action == "SP":
+                elif action == Action.SPLIT:
                     split_card = hand.split()
                     new_hand = Hand(cards=[split_card], bet=hand.bet, is_split=True)
                     player.place_bet(hand.bet)
@@ -267,7 +306,7 @@ class BlackjackGame:
                     if hand.cards[0].rank.value == 1:
                         break
 
-                elif action == "SR":
+                elif action == Action.SURRENDER:
                     player.receive_payout(hand.bet * 0.5)
                     player.record_loss()
                     self._emit_event(
@@ -291,6 +330,7 @@ class BlackjackGame:
         while self.dealer.should_hit:
             card = self.shoe.draw()
             self.count.update(card)
+            assert self.dealer.hand is not None
             self.dealer.hand.add_card(card)
 
     def _resolve_dealer_blackjack(self, hand_id: str):
@@ -320,6 +360,7 @@ class BlackjackGame:
                 )
 
     def _resolve_hands(self, hand_id: str):
+        assert self.dealer.hand is not None
         dealer_value = self.dealer.hand.value
         dealer_busted = self.dealer.hand.is_busted
 
@@ -386,6 +427,102 @@ class BlackjackGame:
                 cards_remaining=self.shoe.cards_remaining,
             )
         )
+
+    def _handle_wonging(self, hand_id: str, true_count: float):
+        entering = []
+        team_signals = self._get_team_signals(true_count)
+        for player in self.bench[:]:
+            config = ROLE_CONFIGS.get(player.role, {})
+            entry_tc = config.get("entry_tc")
+            perceived_count = (
+                team_signals.get(player.team_id, true_count)
+                if player.team_id
+                else true_count
+            )
+
+            if entry_tc is not None and perceived_count >= entry_tc:
+                entering.append(player)
+                self.bench.remove(player)
+                self.players.append(player)
+                self._emit_event(
+                    GameEvent(
+                        event_id=f"{hand_id}_{player.player_id}_seat",
+                        timestamp=datetime.now(timezone.utc),
+                        table_id=self.table_id,
+                        hand_id=hand_id,
+                        event_type="seat",
+                        player_id=player.player_id,
+                        player_role=player.role.value,
+                        team_id=player.team_id,
+                        true_count=true_count,
+                        cards_remaining=self.shoe.cards_remaining,
+                    )
+                )
+                logger.info(
+                    f"{player.player_id} ({player.role.value}) sits down at TC={true_count:.1f}"
+                )
+
+        exiting = []
+        for player in self.players[:]:
+            config = ROLE_CONFIGS.get(player.role, {})
+            exit_tc = config.get("exit_tc")
+
+            if exit_tc is not None and true_count <= exit_tc:
+                exiting.append(player)
+                self.players.remove(player)
+                self.bench.append(player)
+
+                self._emit_event(
+                    GameEvent(
+                        event_id=f"{hand_id}_{player.player_id}_unseat",
+                        timestamp=datetime.now(timezone.utc),
+                        table_id=self.table_id,
+                        hand_id=hand_id,
+                        event_type="unseat",
+                        player_id=player.player_id,
+                        player_role=player.role.value,
+                        team_id=player.team_id,
+                        true_count=true_count,
+                        cards_remaining=self.shoe.cards_remaining,
+                    )
+                )
+                logger.info(
+                    f"{player.player_id} ({player.role.value}) leaves table at TC={true_count:.1f}"
+                )
+
+    def _remove_quit_players(self):
+        all_players = self.players + self.bench
+
+        for player in all_players[:]:
+            if player.should_quit_individual():
+                if player in self.players:
+                    self.players.remove(player)
+                if player in self.bench:
+                    self.bench.remove(player)
+
+                reason = "win_target" if player.hit_win_target() else "stop_loss"
+                logger.info(
+                    f"{player.player_id} ({player.role.value}) quit session: {reason} "
+                    f"(P&L: ${player.net_profit:,.0f})"
+                )
+            elif not player.can_bet:
+                if player in self.players:
+                    self.players.remove(player)
+                if player in self.bench:
+                    self.bench.remove(player)
+
+                logger.info(
+                    f"{player.player_id} ({player.role.value}) quit session: bankrupt "
+                    f"(P&L: ${player.net_profit:,.0f})"
+                )
+
+    def _get_team_signals(self, true_count: float) -> Dict[str, float]:
+        signals = {}
+        for player in self.players:
+            if player.role == PlayerRole.SPOTTER and player.team_id:
+                perceived = player.strategy._perceived_count(true_count)
+                signals[player.team_id] = perceived
+        return signals
 
     def _emit_event(self, event: GameEvent):
         """Add event to buffer (or send to Kafka in production)"""

@@ -6,7 +6,13 @@ build-backend = "setuptools.build_meta"
 name = "tablewatch"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["pydantic>=2.0"]
+dependencies = [
+  "pydantic>=2.0",
+  "networkx>=3.2",
+  "leidenalg>=0.10",
+  "pandas>=2.2",
+  "scikit-learn>=1.4"
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

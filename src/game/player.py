@@ -1,8 +1,8 @@
 from pydantic import BaseModel, Field, computed_field, ConfigDict
-from typing import List
+from typing import List, Optional
 
 from .hand import Hand
-from .strategy import Strategy
+from .strategy import Strategy, PlayerRole
 
 
 class Player(BaseModel):
@@ -15,6 +15,11 @@ class Player(BaseModel):
     hands_pushed: int = 0
     total_wagered: float = 0.0
     strategy: Strategy
+    role: PlayerRole = PlayerRole.CASUAL
+    team_id: Optional[str] = None
+    max_session_loss_pct: float = Field(default=0.5)
+    max_session_win_pct: float = Field(default=1.0)
+
     model_config = ConfigDict(frozen=False, arbitrary_types_allowed=True)
 
     @computed_field
@@ -66,3 +71,14 @@ class Player(BaseModel):
 
     def record_push(self) -> None:
         self.hands_pushed += 1
+
+    def hit_stop_loss(self) -> bool:
+        max_loss = self.initial_bankroll * self.max_session_loss_pct
+        return self.net_profit < -max_loss
+
+    def hit_win_target(self) -> bool:
+        win_target = self.initial_bankroll * self.max_session_win_pct
+        return self.net_profit > win_target
+
+    def should_quit_individual(self) -> bool:
+        return self.hit_stop_loss() or self.hit_win_target()
