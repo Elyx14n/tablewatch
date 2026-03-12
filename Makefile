@@ -14,43 +14,38 @@ ps:
 topics:
 	docker exec tablewatch-kafka kafka-topics --bootstrap-server localhost:9092 --list
 
-# Describe analytics topic
-describe-analytics:
-	docker exec tablewatch-kafka kafka-topics --bootstrap-server localhost:9092 --describe --topic blackjack-analytics
+# Describe blackjack topic
+describe:
+	docker exec tablewatch-kafka kafka-topics --bootstrap-server localhost:9092 --describe --topic blackjack
 
-# Describe visualization topic
-describe-viz:
-	docker exec tablewatch-kafka kafka-topics --bootstrap-server localhost:9092 --describe --topic blackjack-visualization
+# Consume messages (binary Avro)
+consume:
+	docker exec -it tablewatch-kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic blackjack --from-beginning --max-messages 10
 
-# Consume analytics messages (binary Avro)
-consume-analytics:
-	docker exec -it tablewatch-kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic blackjack-analytics --from-beginning --max-messages 10
+# Count messages in topic
+count:
+	docker exec tablewatch-kafka kafka-run-class kafka.tools.GetOffsetShell --bootstrap-server localhost:9092 --topic blackjack --time -1 | awk -F: '{sum += $$3} END {print "Total messages:", sum}'
 
-# Consume visualization messages (binary Avro)
-consume-viz:
-	docker exec -it tablewatch-kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic blackjack-visualization --from-beginning --max-messages 10
-
-# Count messages in analytics topic
-count-analytics:
-	docker exec tablewatch-kafka kafka-run-class kafka.tools.GetOffsetShell --bootstrap-server localhost:9092 --topic blackjack-analytics --time -1 | awk -F: '{sum += $$3} END {print "Total messages:", sum}'
-
-# Count messages in visualization topic
-count-viz:
-	docker exec tablewatch-kafka kafka-run-class kafka.tools.GetOffsetShell --bootstrap-server localhost:9092 --topic blackjack-visualization --time -1 | awk -F: '{sum += $$3} END {print "Total messages:", sum}'
-
-# Delete and recreate topics
-reset-topics:
-	docker exec tablewatch-kafka kafka-topics --bootstrap-server localhost:9092 --delete --topic blackjack-analytics || true
-	docker exec tablewatch-kafka kafka-topics --bootstrap-server localhost:9092 --delete --topic blackjack-visualization || true
+# Delete and recreate topic
+reset-topic:
+	docker exec tablewatch-kafka kafka-topics --bootstrap-server localhost:9092 --delete --topic blackjack || true
 	docker compose up -d kafka-setup
 
 # List registered schemas in Schema Registry
 schemas:
 	curl -s http://localhost:8081/subjects | python -m json.tool
 
-# Get schema for a specific subject
+# Get schema for BetEvent
 schema-bet:
-	curl -s http://localhost:8081/subjects/blackjack-analytics-com.tablewatch.blackjack.BetEvent/versions/latest | python -m json.tool
+	curl -s http://localhost:8081/subjects/blackjack-com.tablewatch.blackjack.BetEvent/versions/latest | python -m json.tool
+
+# Get schema for CardDealtEvent
+schema-card:
+	curl -s http://localhost:8081/subjects/blackjack-com.tablewatch.blackjack.CardDealtEvent/versions/latest | python -m json.tool
+
+# Get schema for OutcomeEvent
+schema-outcome:
+	curl -s http://localhost:8081/subjects/blackjack-com.tablewatch.blackjack.OutcomeEvent/versions/latest | python -m json.tool
 
 # Run the game simulation
 run:

@@ -14,6 +14,9 @@ dependencies = [
   "scikit-learn>=1.4",
   "confluent-kafka[avro]>=2.13.2",
   "pydantic-avro>=0.7.0",
+  "psycopg2>=2.9.11",
+  "redis>=7.3.0",
+  "fastavro>=1.9"
 ]
 
 [tool.setuptools.packages.find]

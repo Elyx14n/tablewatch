@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pydantic import ConfigDict, Field
 from typing import Optional, Literal
 from enum import Enum
-from pydantic_avro.to_avro.base import AvroBase 
+from pydantic_avro.to_avro.base import AvroBase
 
 
 class EventType(str, Enum):
@@ -13,6 +13,7 @@ class EventType(str, Enum):
     SHUFFLE = "shuffle"
     SEAT = "seat"
     UNSEAT = "unseat"
+    BACKOFF = "backoff"
     CARD_DEALT = "card_dealt"
     PLAYER_STATE = "player_state"
     ROUND_START = "round_start"
@@ -28,15 +29,22 @@ class Result(str, Enum):
     SURRENDER = "surrender"
 
 
+class BackoffReason(str, Enum):
+    SUSPECTED_COUNTING = "suspected_counting"
+    EXCESSIVE_WINS = "excessive_wins"
+    HIGH_BET_SPREAD = "high_bet_spread"
+    TEAM_PLAY_DETECTED = "team_play_detected"
+    BANNED = "banned"
+
+
 class Event(AvroBase):
     event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     table_id: str
     round_id: str
     model_config = ConfigDict(frozen=True)
-    
 
-# Shared events
+
 class PlayerStateEvent(Event):
     event_type: Literal[EventType.PLAYER_STATE] = EventType.PLAYER_STATE
     player_id: str
@@ -51,7 +59,6 @@ class PlayerStateEvent(Event):
     win_rate: float
 
 
-# Analytic events
 class BetEvent(Event):
     event_type: Literal[EventType.BET] = EventType.BET
     player_id: str
@@ -102,21 +109,28 @@ class UnseatEvent(Event):
     cards_remaining: int
 
 
-# Visualization events
+class BackoffEvent(Event):
+    event_type: Literal[EventType.BACKOFF] = EventType.BACKOFF
+    player_id: str
+    team_id: Optional[str] = None
+    reason: BackoffReason
+    is_permanent: bool = False
+
+
 class CardDealtEvent(Event):
     event_type: Literal[EventType.CARD_DEALT] = EventType.CARD_DEALT
-    recipient_type: str        # "PLAYER" or "DEALER"
+    recipient_type: str  # "PLAYER" or "DEALER"
     recipient_id: str
-    hand_index: int = 0        # 0 for main/dealer, 1+ for splits
-    
+    hand_index: int = 0  # 0 for main/dealer, 1+ for splits
+
     # Card Data
     card_rank: str
     card_suit: str
-    
+
     # State Snapshot (Helps the UI and Analytics)
-    hand_value_after: int      # The total value of the hand after this card
-    is_hidden: bool = False    # True only for the Dealer's hole card
-    
+    hand_value_after: int  # The total value of the hand after this card
+    is_hidden: bool = False  # True only for the Dealer's hole card
+
     # Environmental Data
     true_count: float
     cards_remaining: int

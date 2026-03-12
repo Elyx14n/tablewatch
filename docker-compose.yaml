@@ -36,9 +36,8 @@ services:
     entrypoint: [ "bash", "-c", "
       echo 'Waiting for Kafka...' &&
       cub kafka-ready -b kafka:29092 1 30 &&
-      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic blackjack-analytics --partitions 10 --replication-factor 1 &&
-      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic blackjack-visualization --partitions 5 --replication-factor 1 &&
-      echo 'Topics created successfully!'" ]
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic blackjack --partitions 80 --replication-factor 1 &&
+      echo 'Topic created successfully!'" ]
 
   schema-registry:
     image: confluentinc/cp-schema-registry:7.8.6
@@ -83,6 +82,14 @@ services:
       POSTGRES_PASSWORD: tablewatch
     volumes:
       - timescale_data:/var/lib/postgresql/data
+    networks:
+      - tablewatch-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: tablewatch-redis
+    ports:
+      - "6379:6379"
     networks:
       - tablewatch-network
 

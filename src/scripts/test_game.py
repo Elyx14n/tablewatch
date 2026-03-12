@@ -1,11 +1,9 @@
 import signal
-from collections import Counter
 from typing import List
 from blackjack.game import BlackjackGame
 from blackjack.house import HouseRules
 from blackjack.strategy import Strategy, PlayerRole, ROLE_CONFIGS
 from blackjack.player import Player
-from ..kafka.producers.blackjack_producer import BlackjackProducer
 from blackjack.events import Event, SeatEvent, UnseatEvent, BetEvent
 
 
@@ -48,7 +46,7 @@ def make_team_player(
                 else 0.0
             ),
         ),
-    )    
+    )
 
 
 def run_scenario(scenario_name: str, active_players, bench_players):
@@ -66,22 +64,17 @@ def run_scenario(scenario_name: str, active_players, bench_players):
         penetration=0.6,
         table_min=25.0,
         table_max=5000.0,
-        delay_seconds=0.1
+        delay_seconds=0.1,
     )
-    
+
     def handle_shutdown(signum, frame):
         print("\nGraceful shutdown requested. Finishing current round...")
         game.shutdown()
 
     signal.signal(signal.SIGINT, handle_shutdown)
 
-    events: List[Event] = []
-    producer = BlackjackProducer()
-    while game.has_active_players() and not game.shutdown_requested:
-        events = game.play()
-        producer.send_events(events)
-    producer.close()
-    
+    events: List[Event] = game.run()
+
     all_players = active_players + bench_players
     total_pl = 0
     for player in all_players:
@@ -95,9 +88,6 @@ def run_scenario(scenario_name: str, active_players, bench_players):
             f"  hands: {player.total_hands:<4}"
             f"  P&L: {sign}${abs(profit):>7.0f}"
         )
-
-    type_counts = Counter(e.event_type for e in events)
-    print(f"\n  Event breakdown: {dict(type_counts)}")
 
     seat_events: list[SeatEvent] = [e for e in events if isinstance(e, SeatEvent)]
     unseat_events: list[UnseatEvent] = [e for e in events if isinstance(e, UnseatEvent)]
@@ -154,16 +144,6 @@ def main():
             ),
         ],
     )
-    # run_scenario(
-    #     "Casual player",
-    #     active_players=[
-    #         make_team_player(
-    #             "casual_bob", PlayerRole.CASUAL, None, 15000, rules
-    #         ),
-    #     ],
-    #     bench_players=[],
-    # )
-
     print(f"\n{'='*70}")
 
 

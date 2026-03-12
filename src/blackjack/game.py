@@ -1,7 +1,8 @@
 import uuid
 import time
 from typing import List, Optional, Dict
-
+import redis
+import logging
 from .player import Player
 from .dealer import Dealer
 from .shoe import Shoe
@@ -21,7 +22,12 @@ from .events import (
     PlayerStateEvent,
     CardDealtEvent,
     Result,
+    RoundStartEvent,
+    RoundEndEvent,
 )
+from ..producers.blackjack_producer import BlackjackProducer
+
+logger = logging.getLogger(__name__)
 
 
 class BlackjackGame:
@@ -36,6 +42,8 @@ class BlackjackGame:
         table_max: float = 5000.0,
         bench: Optional[List[Player]] = None,
         delay_seconds: float = 0.0,
+        redis_host: str = "localhost",
+        redis_port: int = 6379,
     ):
         self.table_id = table_id
         self.players = players.copy()
@@ -51,37 +59,80 @@ class BlackjackGame:
         self.current_round_id: str = ""
         self.shutdown_requested = False
         self.delay = delay_seconds
-    
+        self.redis = redis.Redis(
+            host=redis_host, port=redis_port, decode_responses=True
+        )
+        self.backoff_pubsub = self.redis.pubsub(ignore_subscribe_messages=True)
+        self.backoff_pubsub.subscribe("backoffs")
+        self.backed_off_players: set[str] = set()
+        self.producer = BlackjackProducer()
+
     def shutdown(self) -> None:
         self.shutdown_requested = True
 
-    def play(self) -> List[Event]:
-        self.events.clear()
-        self._play_round()
-        return self.events
-    
     def run(self) -> List[Event]:
-        all_events = []
-
-        while self.has_active_players() and not self.shutdown_requested:
-            events = self.play()
-            all_events.extend(events)
-
-        return all_events
+        try:
+            round_num = 1
+            all_events = []
+            while self.has_active_players() and not self.shutdown_requested:
+                self.events.clear()
+                self._add_event(
+                    RoundStartEvent,
+                    round_number=round_num,
+                    active_player_ids=self._get_active_players_ids(),
+                )
+                self._play_round()
+                self._add_event(
+                    RoundEndEvent,
+                    round_number=round_num,
+                )
+                all_events.extend(self.events)
+                round_num += 1
+            return all_events
+        except Exception:
+            logger.exception("Blacjack simulation run failed")
+            raise
+        finally:
+            self.producer.close()
+            self.redis.close()
+            self.backoff_pubsub.close()
 
     def has_active_players(self) -> bool:
         return bool(self.players or self.bench)
+
+    def _get_active_players_ids(self) -> list[str]:
+        return [p.player_id for p in (self.players + self.bench)]
+
+    def _check_backoffs(self) -> None:
+        message = self.backoff_pubsub.get_message()
+        if message and message["type"] == "message":
+            player_id = message["data"]
+            self.backed_off_players.add(player_id)
+
+    def _remove_backed_off_players(self) -> None:
+        all_players = self.players + self.bench
+
+        for player in all_players[:]:
+            if player.player_id in self.backed_off_players:
+                if player in self.players:
+                    self.players.remove(player)
+                if player in self.bench:
+                    self.bench.remove(player)
 
     def _play_round(self) -> None:
         self.current_round_id = f"round_{uuid.uuid4().hex[:12]}"
         if self.shoe.needs_shuffle:
             self._shuffle()
+
+        self._check_backoffs()
+        self._remove_backed_off_players()
+
         self._remove_quit_players()
         self.hand_counter += 1
         hand_id = f"{self.table_id}_H{self.hand_counter}"
         true_count = self.count.get_true_count(self.shoe.decks_remaining)
 
-        self._handle_wonging(hand_id, true_count)
+        self._handle_wonging(true_count)
 
         team_signals: Dict[str, float] = {}
         for player in self.players:
@@ -121,19 +172,19 @@ class BlackjackGame:
 
         for player in self.players:
             card = self.shoe.draw()
-            self._emit_card_event(card, player.hands[0], "PLAYER", player.player_id)
+            self._add_card_event(card, player.hands[0], "PLAYER", player.player_id)
 
         dealer_upcard = self.shoe.draw()
-        self._emit_card_event(
+        self._add_card_event(
             dealer_upcard, dealer_hand, "DEALER", "HOUSE", hidden=False
         )
 
         for player in self.players:
             card = self.shoe.draw()
-            self._emit_card_event(card, player.hands[0], "PLAYER", player.player_id)
+            self._add_card_event(card, player.hands[0], "PLAYER", player.player_id)
 
         dealer_hole = self.shoe.draw()
-        self._emit_card_event(dealer_hole, dealer_hand, "DEALER", "HOUSE", hidden=True)
+        self._add_card_event(dealer_hole, dealer_hand, "DEALER", "HOUSE", hidden=True)
 
         self.dealer.set_hand(dealer_hand)
 
@@ -155,7 +206,7 @@ class BlackjackGame:
         if active_hands > 0:
             self._play_dealer_hand()
 
-        self._resolve_hands(hand_id)
+        self._resolve_hands()
         self._cleanup_round()
 
     def _play_player_hands(self, player: Player, dealer_upcard: Card, hand_id: str):
@@ -229,7 +280,7 @@ class BlackjackGame:
                 if action == Action.HIT:
                     card = self.shoe.draw()
                     hand_idx = player.hands.index(hand)
-                    self._emit_card_event(
+                    self._add_card_event(
                         card, hand, "PLAYER", player.player_id, h_idx=hand_idx
                     )
 
@@ -241,7 +292,7 @@ class BlackjackGame:
                     hand.double_down()
                     card = self.shoe.draw()
                     hand_idx = player.hands.index(hand)
-                    self._emit_card_event(
+                    self._add_card_event(
                         card, hand, "PLAYER", player.player_id, h_idx=hand_idx
                     )
                     break
@@ -255,13 +306,13 @@ class BlackjackGame:
                     # Deal cards to both split hands
                     c1 = self.shoe.draw()
                     hand_idx = player.hands.index(hand)
-                    self._emit_card_event(
+                    self._add_card_event(
                         c1, hand, "PLAYER", player.player_id, h_idx=hand_idx
                     )
 
                     c2 = self.shoe.draw()
                     new_hand_idx = player.hands.index(new_hand)
-                    self._emit_card_event(
+                    self._add_card_event(
                         c2, new_hand, "PLAYER", player.player_id, h_idx=new_hand_idx
                     )
 
@@ -288,7 +339,7 @@ class BlackjackGame:
         while self.dealer.should_hit:
             card = self.shoe.draw()
             assert self.dealer.hand is not None
-            self._emit_card_event(
+            self._add_card_event(
                 card, self.dealer.hand, "DEALER", "HOUSE", h_idx=0, hidden=False
             )
 
@@ -313,13 +364,13 @@ class BlackjackGame:
                     bankroll_after=player.bankroll,
                 )
 
-    def _resolve_hands(self, hand_id: str):
+    def _resolve_hands(self):
         assert self.dealer.hand is not None
         dealer_value = self.dealer.hand.value
         dealer_busted = self.dealer.hand.is_busted
 
         for player in self.players:
-            for hand_idx, hand in enumerate(player.hands):
+            for _, hand in enumerate(player.hands):
                 if hand.is_busted or hand.is_blackjack:
                     continue
 
@@ -387,7 +438,7 @@ class BlackjackGame:
         if self.delay > 0:
             time.sleep(self.delay * 8)
 
-    def _handle_wonging(self, hand_id: str, true_count: float):
+    def _handle_wonging(self, true_count: float):
         entering = []
         team_signals = self._get_team_signals(true_count)
         for player in self.bench[:]:
@@ -491,9 +542,10 @@ class BlackjackGame:
             table_id=self.table_id, round_id=self.current_round_id, **kwargs
         )
         self.events.append(event)
+        self.producer.send_event(event)
         return event
 
-    def _emit_card_event(
+    def _add_card_event(
         self,
         card: Card,
         hand: Hand,
@@ -504,7 +556,7 @@ class BlackjackGame:
     ):
         self.count.update(card)
         hand.add_card(card)
-        self._add_event(
+        event = self._add_event(
             CardDealtEvent,
             recipient_type=recipient,
             recipient_id=r_id,
@@ -516,5 +568,6 @@ class BlackjackGame:
             true_count=self.count.get_true_count(self.shoe.decks_remaining),
             cards_remaining=self.shoe.cards_remaining,
         )
+        self.producer.send_event(event)
         if self.delay > 0:
             time.sleep(self.delay)
