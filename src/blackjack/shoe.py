@@ -1,6 +1,4 @@
 from typing import List, Optional
-from datetime import datetime, timezone
-from pydantic import BaseModel, ConfigDict, Field
 import random
 
 from .card import Card, Rank, Suit
@@ -8,9 +6,7 @@ from .card import Card, Rank, Suit
 
 class Shoe:
     def __init__(
-        self, num_decks: int = 6, penetration: float = 0.75, shoe_id: Optional[str] = None
-    ):
-        self.shoe_id = shoe_id or f"shoe_{id(self)}"
+        self, num_decks: int = 6, penetration: float = 0.65):
         self.num_decks = num_decks
         self.penetration = penetration
         self.draw_pile: List[Card] = []
@@ -61,23 +57,3 @@ class Shoe:
     def decks_remaining(self) -> float:
         decks = self.cards_remaining / 52
         return round(decks * 2) / 2
-
-    def get_state(self) -> "ShoeState":
-        """Get immutable snapshot for events/logging"""
-        return ShoeState(
-            shoe_id=self.shoe_id,
-            num_decks=self.num_decks,
-            cards_remaining=self.cards_remaining,
-            cards_dealt=self.cards_dealt,
-            penetration=self.penetration,
-        )
-
-
-class ShoeState(BaseModel):
-    shoe_id: str
-    num_decks: int
-    cards_remaining: int
-    cards_dealt: int
-    penetration: float
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    model_config = ConfigDict(frozen=True)

@@ -1,8 +1,12 @@
-from game.game import BlackjackGame
-from game.house import HouseRules
-from game.strategy import Strategy, PlayerRole, ROLE_CONFIGS
-from game.player import Player
+import signal
 from collections import Counter
+from typing import List
+from blackjack.game import BlackjackGame
+from blackjack.house import HouseRules
+from blackjack.strategy import Strategy, PlayerRole, ROLE_CONFIGS
+from blackjack.player import Player
+from ..kafka.producers.blackjack_producer import BlackjackProducer
+from blackjack.events import Event, SeatEvent, UnseatEvent, BetEvent
 
 
 def make_team_player(
@@ -44,10 +48,10 @@ def make_team_player(
                 else 0.0
             ),
         ),
-    )
+    )    
 
 
-def run_scenario(scenario_name: str, active_players, bench_players, num_rounds=1000):
+def run_scenario(scenario_name: str, active_players, bench_players):
     print(f"\n{'='*70}")
     print(f"  {scenario_name}")
     print(f"{'='*70}")
@@ -62,9 +66,21 @@ def run_scenario(scenario_name: str, active_players, bench_players, num_rounds=1
         penetration=0.6,
         table_min=25.0,
         table_max=5000.0,
+        delay_seconds=0.1
     )
+    
+    def handle_shutdown(signum, frame):
+        print("\nGraceful shutdown requested. Finishing current round...")
+        game.shutdown()
 
-    events = game.play(num_rounds)
+    signal.signal(signal.SIGINT, handle_shutdown)
+
+    events: List[Event] = []
+    producer = BlackjackProducer()
+    while game.has_active_players() and not game.shutdown_requested:
+        events = game.play()
+        producer.send_events(events)
+    producer.close()
     
     all_players = active_players + bench_players
     total_pl = 0
@@ -83,8 +99,8 @@ def run_scenario(scenario_name: str, active_players, bench_players, num_rounds=1
     type_counts = Counter(e.event_type for e in events)
     print(f"\n  Event breakdown: {dict(type_counts)}")
 
-    seat_events = [e for e in events if e.event_type == "seat"]
-    unseat_events = [e for e in events if e.event_type == "unseat"]
+    seat_events: list[SeatEvent] = [e for e in events if isinstance(e, SeatEvent)]
+    unseat_events: list[UnseatEvent] = [e for e in events if isinstance(e, UnseatEvent)]
 
     if seat_events or unseat_events:
         print(f"\n  Wonging Activity:")
@@ -110,11 +126,8 @@ def run_scenario(scenario_name: str, active_players, bench_players, num_rounds=1
         print(
             f"    Team P&L: {"+" if total_pl > 0 else "" if total_pl == 0 else "-"}${abs(total_pl):,.0f}"
         )
-
         for team_id in teams:
-            team_events = [
-                e for e in events if e.team_id == team_id and e.event_type == "bet"
-            ]
+            team_events: list[BetEvent] = [e for e in events if isinstance(e, BetEvent)]
             if team_events:
                 total_wagered = sum(e.bet_amount for e in team_events if e.bet_amount)
                 print(f"    {team_id}: ${total_wagered:,.0f} total wagered")
@@ -140,7 +153,6 @@ def main():
                 "counter_diana", PlayerRole.BACK_COUNTER, "team_omega", 50000, rules
             ),
         ],
-        num_rounds=1000000
     )
     # run_scenario(
     #     "Casual player",

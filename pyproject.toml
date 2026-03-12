@@ -11,7 +11,9 @@ dependencies = [
   "networkx>=3.2",
   "leidenalg>=0.10",
   "pandas>=2.2",
-  "scikit-learn>=1.4"
+  "scikit-learn>=1.4",
+  "confluent-kafka[avro]>=2.13.2",
+  "pydantic-avro>=0.7.0",
 ]
 
 [tool.setuptools.packages.find]

@@ -8,7 +8,6 @@ class Hand(BaseModel):
     cards: List[Card] = Field(default_factory=list)
     bet: float = Field(ge=0)
     is_split: bool = False
-    insurance_bet: float = 0.0
     model_config = ConfigDict(frozen=False)
 
     @property
@@ -58,11 +57,6 @@ class Hand(BaseModel):
 
     def double_down(self):
         self.bet *= 2
-
-    def take_insurance(self):
-        if self.insurance_bet > 0:
-            raise ValueError("Insurance already taken")
-        self.insurance_bet = self.bet / 2
 
     def split(self) -> Card:
         if not self.is_pair:

@@ -38,10 +38,6 @@ class Player(BaseModel):
         return self.hands_won / self.total_hands if self.total_hands > 0 else 0.0
 
     @property
-    def has_hands(self) -> bool:
-        return len(self.hands) > 0
-
-    @property
     def can_bet(self) -> bool:
         return self.bankroll > 0
 

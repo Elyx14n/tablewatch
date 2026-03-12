@@ -17,6 +17,9 @@ class HiLoCount:
             return 0.0
         return self.running_count / decks_remaining
     
+    def get_running_count(self) -> int:
+        return self.running_count
+    
     def reset(self) -> None:
         self.running_count = 0
         self._cards_seen = 0
