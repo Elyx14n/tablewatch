@@ -13,7 +13,7 @@ from pydantic import Field
 
 ROOT = Path(__file__).resolve().parent.parent
 
-class Orchestrator(BaseSettings):
+class Setup(BaseSettings):
     db_host: str = "localhost"
     db_port: int = 5432
     db_name: str = "tablewatch"
@@ -54,6 +54,7 @@ class Orchestrator(BaseSettings):
         (
             player_id, role, team_id, bankroll, initial_bankroll,
             skill, counting, kelly_unit, bet_spread,
+            entry_tc, exit_tc,
             max_session_loss_pct, max_session_win_pct,
         ) = player_row
 
@@ -64,6 +65,8 @@ class Orchestrator(BaseSettings):
             initial_bankroll=float(initial_bankroll),
             role=PlayerRole(role),
             team_id=team_id,
+            entry_tc=float(entry_tc) if entry_tc is not None else None,
+            exit_tc=float(exit_tc) if exit_tc is not None else None,
             max_session_loss_pct=float(max_session_loss_pct),
             max_session_win_pct=float(max_session_win_pct),
             strategy=Strategy(
@@ -116,10 +119,9 @@ class Orchestrator(BaseSettings):
             executor.map(self.run_game, self.tables)
         print("All games completed")
 
-
 if __name__ == "__main__":
     # Windows/macOS requirement for multiprocessing
     multiprocessing.set_start_method("spawn", force=True)
-    spawner = Orchestrator(delay_seconds=0.5)
+    spawner = Setup(delay_seconds=0.5)
     spawner.load_fixtures()
     spawner.spawn_games(max_workers=10)

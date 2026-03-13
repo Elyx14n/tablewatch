@@ -1,4 +1,4 @@
-from typing import Literal, Dict, Optional
+from typing import Dict
 from enum import Enum
 import random
 
@@ -35,45 +35,11 @@ SPREAD_MAX_ONLY = {
 
 class PlayerRole(Enum):
     CASUAL = "casual"
+    ADVANTAGE = "advantage"  # Solo card counter
     SPOTTER = "spotter"
     BACK_COUNTER = "back_counter"
     BIG_PLAYER = "big_player"
 
-
-ROLE_CONFIGS = {
-    PlayerRole.CASUAL: {
-        "skill": None,
-        "counting": None,
-        "bet_spread": None,
-        "kelly_unit": None,
-        "entry_tc": None,
-        "exit_tc": None,
-    },
-    PlayerRole.SPOTTER: {
-        "skill": 1.0,
-        "counting": 1.0,
-        "bet_spread": SPREAD_1_TO_1,
-        "kelly_unit": 0.0,
-        "entry_tc": None,
-        "exit_tc": None,
-    },
-    PlayerRole.BACK_COUNTER: {
-        "skill": 1.0,
-        "counting": 1.0,
-        "bet_spread": SPREAD_1_TO_6,
-        "kelly_unit": 0.3,
-        "entry_tc": 2,
-        "exit_tc": 0,
-    },
-    PlayerRole.BIG_PLAYER: {
-        "skill": 1.0,
-        "counting": 0.0,
-        "bet_spread": SPREAD_1_TO_20,
-        "kelly_unit": 0.8,
-        "entry_tc": 1,
-        "exit_tc": -1,
-    },
-}
 
 class Action(Enum):
     HIT = "H"
@@ -81,6 +47,7 @@ class Action(Enum):
     DOUBLE = "D"
     SPLIT = "SP"
     SURRENDER = "SR"
+
 
 # Basic Strategy Charts
 PAIR_SPLITS = {
@@ -232,7 +199,9 @@ class Strategy:
             aceless = sum(c.value for c in hand.cards if c.rank != Rank.ACE)
             if aceless <= 10:
                 action = Action(self.soft_totals.get(aceless, ["H"] * 10)[dealer_idx])
-                return Action.HIT if action == Action.DOUBLE and not can_double else action
+                return (
+                    Action.HIT if action == Action.DOUBLE and not can_double else action
+                )
         if hand.value <= 8:
             return Action.HIT
         if hand.value >= 17:
@@ -273,7 +242,9 @@ class Strategy:
         if bankroll <= 0:
             return 0.0
 
-        perceived_count = self._perceived_count(true_count) if self.counting >= 0.1 else true_count
+        perceived_count = (
+            self._perceived_count(true_count) if self.counting >= 0.1 else true_count
+        )
 
         if self.kelly_unit > 0:
             # Dynamic unit: Kelly-calibrated so that the max-spread bet at the highest
@@ -281,7 +252,9 @@ class Strategy:
             # Hi-Lo edge approximation: each TC unit above +1 adds ~0.5% player edge.
             # Variance per hand ≈ 1.3 for standard 6-deck blackjack.
             # Use initial_bankroll for Kelly sizing to avoid death spiral
-            kelly_bankroll = initial_bankroll if initial_bankroll is not None else bankroll
+            kelly_bankroll = (
+                initial_bankroll if initial_bankroll is not None else bankroll
+            )
             max_multiplier = max(self.bet_spread.values())
             max_tc = max(self.bet_spread.keys())
             edge_at_max = max(0.0, (max_tc - 1) * 0.005)

@@ -10,19 +10,16 @@ CREATE TABLE IF NOT EXISTS players (
     player_id VARCHAR(50) PRIMARY KEY,
     role VARCHAR(20) NOT NULL,
     team_id VARCHAR(50),
-    -- Bankroll
     bankroll DECIMAL(12, 2) NOT NULL,
     initial_bankroll DECIMAL(12, 2) NOT NULL,
-    -- Strategy params
     skill DECIMAL(3, 2) DEFAULT 1.0,
     counting DECIMAL(3, 2) DEFAULT 0.0,
     kelly_unit DECIMAL(5, 4) DEFAULT 0.0,
     bet_spread JSONB,
-    -- Session limits
+    entry_tc DECIMAL(4, 2),
+    exit_tc DECIMAL(4, 2),
     max_session_loss_pct DECIMAL(3, 2) DEFAULT 0.5,
     max_session_win_pct DECIMAL(3, 2) DEFAULT 1.0,
-
-    -- Metadata
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -34,10 +31,8 @@ CREATE TABLE IF NOT EXISTS team_configs (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 CREATE TABLE IF NOT EXISTS games (
-    -- Identity
     game_id VARCHAR(50) PRIMARY KEY,
     table_id VARCHAR(50) NOT NULL REFERENCES tables(table_id),
-    -- Timing
     started_at TIMESTAMP NOT NULL,
     ended_at TIMESTAMP,
     duration_seconds INTEGER GENERATED ALWAYS AS (
@@ -46,26 +41,19 @@ CREATE TABLE IF NOT EXISTS games (
             FROM (ended_at - started_at)
         )::INTEGER
     ) STORED,
-    -- Game metadata
     num_decks INTEGER,
     penetration DECIMAL(3, 2),
     table_min DECIMAL(10, 2),
     table_max DECIMAL(10, 2),
-    -- Player tracking
     player_ids TEXT [],
-    -- Array of player_id strings
     initial_player_count INTEGER,
     final_player_count INTEGER,
-    -- Game statistics (derived/computed)
     total_hands INTEGER DEFAULT 0,
     total_shuffles INTEGER DEFAULT 0,
     total_bets_placed DECIMAL(15, 2) DEFAULT 0,
     total_payouts DECIMAL(15, 2) DEFAULT 0,
     house_edge_realized DECIMAL(5, 4),
-    -- Anomaly summary
     anomalies_detected INTEGER DEFAULT 0,
-    -- Status
-    -- Indexes
     created_at TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX idx_games_table ON games(table_id);
@@ -73,43 +61,46 @@ CREATE INDEX idx_games_started ON games(started_at DESC);
 CREATE INDEX idx_games_duration ON games(duration_seconds)
 WHERE duration_seconds IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_players_team ON players(team_id);
-
 CREATE TABLE IF NOT EXISTS player_anomalies (
     player_id VARCHAR(50) NOT NULL,
     anomaly_type VARCHAR(50) NOT NULL,
-    anomaly_confidence DECIMAL(3,2) NOT NULL,
+    anomaly_confidence DECIMAL(3, 2) NOT NULL,
     anomaly_detected_at TIMESTAMP NOT NULL,
-
-    bet_spread DECIMAL(8,2),
-    z_score DECIMAL(8,4),
-    win_rate DECIMAL(5,4),
-    q1 DECIMAL(5,4),
-    q3 DECIMAL(5,4),
-    iqr DECIMAL(5,4),
-    bet_change_rate DECIMAL(5,4),
-    wonging_score DECIMAL(3,2),
-    team_correlation DECIMAL(3,2),
-
+    bet_spread DECIMAL(8, 2),
+    z_score DECIMAL(8, 4),
+    win_rate DECIMAL(5, 4),
+    q1 DECIMAL(5, 4),
+    q3 DECIMAL(5, 4),
+    iqr DECIMAL(5, 4),
+    bet_change_rate DECIMAL(5, 4),
+    wonging_score DECIMAL(3, 2),
+    team_correlation DECIMAL(3, 2),
     created_at TIMESTAMP DEFAULT NOW(),
     PRIMARY KEY (player_id, anomaly_type, anomaly_detected_at)
 );
-
 CREATE TABLE IF NOT EXISTS player_correlations (
     player_id_1 VARCHAR(50) NOT NULL,
     player_id_2 VARCHAR(50) NOT NULL,
-    correlation DECIMAL(3,2) NOT NULL,
+    correlation DECIMAL(3, 2) NOT NULL,
     correlation_level VARCHAR(20),
     is_actual_team BOOLEAN,
     window_end TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
     PRIMARY KEY (player_id_1, player_id_2, window_end)
 );
-
-SELECT create_hypertable('player_correlations', 'window_end', if_not_exists => TRUE);
-SELECT create_hypertable('player_anomalies', 'anomaly_detected_at', if_not_exists => TRUE);
-
+SELECT create_hypertable(
+        'player_correlations',
+        'window_end',
+        if_not_exists => TRUE
+    );
+SELECT create_hypertable(
+        'player_anomalies',
+        'anomaly_detected_at',
+        if_not_exists => TRUE
+    );
 CREATE INDEX IF NOT EXISTS idx_anomalies_player ON player_anomalies(player_id, anomaly_detected_at DESC);
 CREATE INDEX IF NOT EXISTS idx_anomalies_type ON player_anomalies(anomaly_type, anomaly_detected_at DESC);
-CREATE INDEX IF NOT EXISTS idx_anomalies_confidence ON player_anomalies(anomaly_confidence DESC) WHERE anomaly_confidence > 0.75;
+CREATE INDEX IF NOT EXISTS idx_anomalies_confidence ON player_anomalies(anomaly_confidence DESC)
+WHERE anomaly_confidence > 0.75;
 CREATE INDEX idx_correlations_p1 ON player_correlations(player_id_1, correlation DESC);
 CREATE INDEX idx_correlations_p2 ON player_correlations(player_id_2, correlation DESC);

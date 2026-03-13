@@ -9,7 +9,7 @@ from .card import Card
 from .hand import Hand
 from .house import HouseRules
 from .count import HiLoCount
-from .strategy import PlayerRole, ROLE_CONFIGS, Action
+from .strategy import PlayerRole, Action
 from .events import (
     Event,
     BetEvent,
@@ -412,15 +412,13 @@ class BlackjackGame:
         entering = []
         team_signals = self._get_team_signals(true_count)
         for player in self.bench[:]:
-            config = ROLE_CONFIGS.get(player.role, {})
-            entry_tc = config.get("entry_tc")
             perceived_count = (
                 team_signals.get(player.team_id, true_count)
                 if player.team_id
                 else true_count
             )
 
-            if entry_tc is not None and perceived_count >= entry_tc:
+            if player.entry_tc is not None and perceived_count >= player.entry_tc:
                 entering.append(player)
                 self.bench.remove(player)
                 self.players.append(player)
@@ -447,10 +445,7 @@ class BlackjackGame:
 
         exiting = []
         for player in self.players[:]:
-            config = ROLE_CONFIGS.get(player.role, {})
-            exit_tc = config.get("exit_tc")
-
-            if exit_tc is not None and true_count <= exit_tc:
+            if player.exit_tc is not None and true_count <= player.exit_tc:
                 exiting.append(player)
                 self.players.remove(player)
                 self.bench.append(player)

@@ -19,6 +19,8 @@ class Player(BaseModel):
     team_id: Optional[str] = None
     max_session_loss_pct: float = Field(default=0.5)
     max_session_win_pct: float = Field(default=1.0)
+    entry_tc: Optional[float] = None
+    exit_tc: Optional[float] = None
 
     model_config = ConfigDict(frozen=False, arbitrary_types_allowed=True)
 

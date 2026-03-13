@@ -24,17 +24,23 @@ services:
       - kafka_kraft:/var/lib/kafka/data
     networks:
       - tablewatch-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:29092 || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
   kafka-setup:
     image: confluentinc/cp-kafka:7.8.6
     container_name: tablewatch-kafka-setup
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
     networks:
       - tablewatch-network
     entrypoint: [ "bash", "-c", "
-      echo 'Waiting for Kafka...' &&
-      cub kafka-ready -b kafka:29092 1 30 &&
+      echo 'Kafka is healthy, creating topic...' &&
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic blackjack --partitions 80 --replication-factor 1 &&
       echo 'Topic created successfully!'" ]
 
@@ -48,27 +54,34 @@ services:
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
     networks:
       - tablewatch-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   kafka-ui:
-      image: provectuslabs/kafka-ui:latest
-      container_name: tablewatch-kafka-ui
-      ports:
-        - "8080:8080"
-      environment:
-        KAFKA_CLUSTERS_0_NAME: tablewatch
-        KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-        KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
-        KAFKA_CLUSTERS_0_SERDES_0_NAME: Avro
-        KAFKA_CLUSTERS_0_SERDES_0_CLASSNAME: io.provectus.kafka.ui.serde.api.SchemaRegistrySerde
-        KAFKA_CLUSTERS_0_SERDES_0_PROPERTIES_URL: http://schema-registry:8081
-      depends_on:
-        - kafka
-        - schema-registry
-      networks:
-        - tablewatch-network
+    image: provectuslabs/kafka-ui:latest
+    container_name: tablewatch-kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: tablewatch
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+      KAFKA_CLUSTERS_0_SERDES_0_NAME: Avro
+      KAFKA_CLUSTERS_0_SERDES_0_CLASSNAME: io.provectus.kafka.ui.serde.api.SchemaRegistrySerde
+      KAFKA_CLUSTERS_0_SERDES_0_PROPERTIES_URL: http://schema-registry:8081
+    depends_on:
+      - kafka
+      - schema-registry
+    networks:
+      - tablewatch-network
 
   timescaledb:
     image: timescale/timescaledb:latest-pg16
@@ -81,10 +94,16 @@ services:
       POSTGRES_PASSWORD: tablewatch
     volumes:
       - timescale_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql  # pg_cron setup
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - tablewatch-network
     command: postgres -c shared_preload_libraries=pg_cron
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tablewatch"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   flink-jobmanager:
     image: flink:1.18-scala_2.12-java11
@@ -105,36 +124,144 @@ services:
     command: taskmanager
     environment:
       - FLINK_PROPERTIES=jobmanager.rpc.address: flink-jobmanager
-        taskmanager.numberOfTaskSlots: 4
+        taskmanager.numberOfTaskSlots: 5
     networks:
       - tablewatch-network
 
-  flink-jobs:
+  flink-job-bet-spread:
     build: .
-    container_name: tablewatch-flink-jobs
     depends_on:
-      - flink-jobmanager
-      - flink-taskmanager
-      - kafka
-      - timescaledb
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    command: bash -c "sleep 15 && python -m src.pipelines.anomaly.bet_spread"
+    restart: unless-stopped
+    networks:
+      - tablewatch-network
+    env_file:
+      - .env
+
+  flink-job-win-rate:
+    build: .
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    command: bash -c "sleep 15 && python -m src.pipelines.anomaly.win_rate"
+    restart: unless-stopped
+    networks:
+      - tablewatch-network
+    env_file:
+      - .env
+
+  flink-job-bet-rate-of-change:
+    build: .
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    command: bash -c "sleep 15 && python -m src.pipelines.anomaly.bet_rate_of_change"
+    restart: unless-stopped
+    networks:
+      - tablewatch-network
+    env_file:
+      - .env
+
+  flink-job-wonging:
+    build: .
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    command: bash -c "sleep 15 && python -m src.pipelines.anomaly.wonging"
+    restart: unless-stopped
+    networks:
+      - tablewatch-network
+    env_file:
+      - .env
+
+  flink-job-team_correlation_prefilter:
+    build: .
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    command: bash -c "sleep 15 && python -m src.pipelines.anomaly.team_correlation_prefilter"
+    restart: unless-stopped
+    networks:
+      - tablewatch-network
+    env_file:
+      - .env
+
+  main:
+    build: .
+    container_name: tablewatch-game-simulator
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
     env_file:
       - .env
     networks:
       - tablewatch-network
     command: >
       bash -c "
-        echo 'Waiting for Flink cluster...' &&
-        sleep 15 &&
-        echo 'Submitting Flink jobs...' &&
-        python -m src.pipelines.anomaly.bet_spread &
-        python -m src.pipelines.anomaly.win_rate &
-        python -m src.pipelines.anomaly.bet_rate_of_change &
-        python -m src.pipelines.anomaly.wonging &
-        python -m src.pipelines.anomaly.team_correlation_prefilter &
-        echo 'All Flink jobs submitted' &&
-        wait
+        echo 'Kafka, Schema Registry, and topic are ready!' &&
+        echo 'Starting blackjack game simulator...' &&
+        python -m src.main
       "
     restart: unless-stopped
+  
+  seed:
+    build: .
+    container_name: tablewatch-seed
+    depends_on:
+      - timescaledb:
+        condition: service_healthy
+    env_file:
+      - .env
+    networks:
+      - tablewatch-network
+    command: >
+      bash -c "
+        echo 'Seeding and flushing old player data...' &&
+        python -m src.db.seed
+        echo 'Seeding completed, initializing tables...'
+        psql postgresql://tablewatch:tablewatch@timescaledb:5432/tablewatch -f /app/src/db/schema.sql &&
+        echo 'Loading seed data...' &&
+        psql postgresql://tablewatch:tablewatch@timescaledb:5432/tablewatch -f /app/src/db/seed_data.sql &&
+        echo 'Seed data loaded successfully!'
+      "
+    restart: no
+
 
 volumes:
   kafka_kraft:
