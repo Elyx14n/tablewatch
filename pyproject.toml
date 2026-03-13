@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tablewatch"
 version = "0.1.0"
-requires-python = ">=3.12"
+requires-python = ">=3.11,<3.12"
 dependencies = [
   "pydantic>=2.0",
   "networkx>=3.2",
@@ -15,8 +15,11 @@ dependencies = [
   "confluent-kafka[avro]>=2.13.2",
   "pydantic-avro>=0.7.0",
   "psycopg2>=2.9.11",
-  "redis>=7.3.0",
-  "fastavro>=1.9"
+  "fastavro>=1.9",
+  "apache-flink>=2.2.0",
+  "apache-flink-libraries>=2.2.0",
+  "python-dotenv>=1.2.2",
+  "pydantic-settings>=2.13.1"
 ]
 
 [tool.setuptools.packages.find]

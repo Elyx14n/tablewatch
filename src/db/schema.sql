@@ -21,12 +21,8 @@ CREATE TABLE IF NOT EXISTS players (
     -- Session limits
     max_session_loss_pct DECIMAL(3, 2) DEFAULT 0.5,
     max_session_win_pct DECIMAL(3, 2) DEFAULT 1.0,
-    -- Player status
-    is_active BOOLEAN DEFAULT TRUE,
-    cooldown_until TIMESTAMP,
-    backoff_reason VARCHAR(50),
-    -- Anomaly data
-    anomaly_detected BOOLEAN DEFAULT FALSE anomaly_type VARCHAR(50) anomaly_confidence DECIMAL(3, 2) anomaly_detected_at TIMESTAMP -- Metadata
+
+    -- Metadata
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -35,7 +31,6 @@ CREATE TABLE IF NOT EXISTS team_configs (
     target_profit DECIMAL(12, 2) DEFAULT 0,
     stop_loss DECIMAL(12, 2) DEFAULT 0,
     current_session_pl DECIMAL(12, 2) DEFAULT 0,
-    is_active BOOLEAN DEFAULT TRUE,
     updated_at TIMESTAMP DEFAULT NOW()
 );
 CREATE TABLE IF NOT EXISTS games (
@@ -69,10 +64,7 @@ CREATE TABLE IF NOT EXISTS games (
     house_edge_realized DECIMAL(5, 4),
     -- Anomaly summary
     anomalies_detected INTEGER DEFAULT 0,
-    backoffs_issued INTEGER DEFAULT 0,
     -- Status
-    termination_reason VARCHAR(50),
-    -- 'ALL_PLAYERS_QUIT', 'BACKOFF', 'SHUTDOWN', etc.
     -- Indexes
     created_at TIMESTAMP DEFAULT NOW()
 );
@@ -81,6 +73,43 @@ CREATE INDEX idx_games_started ON games(started_at DESC);
 CREATE INDEX idx_games_duration ON games(duration_seconds)
 WHERE duration_seconds IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_players_team ON players(team_id);
-CREATE INDEX IF NOT EXISTS idx_players_active ON players(is_active);
-CREATE INDEX IF NOT EXISTS idx_players_cooldown ON players(cooldown_until)
-WHERE cooldown_until IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS player_anomalies (
+    player_id VARCHAR(50) NOT NULL,
+    anomaly_type VARCHAR(50) NOT NULL,
+    anomaly_confidence DECIMAL(3,2) NOT NULL,
+    anomaly_detected_at TIMESTAMP NOT NULL,
+
+    bet_spread DECIMAL(8,2),
+    z_score DECIMAL(8,4),
+    win_rate DECIMAL(5,4),
+    q1 DECIMAL(5,4),
+    q3 DECIMAL(5,4),
+    iqr DECIMAL(5,4),
+    bet_change_rate DECIMAL(5,4),
+    wonging_score DECIMAL(3,2),
+    team_correlation DECIMAL(3,2),
+
+    created_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (player_id, anomaly_type, anomaly_detected_at)
+);
+
+CREATE TABLE IF NOT EXISTS player_correlations (
+    player_id_1 VARCHAR(50) NOT NULL,
+    player_id_2 VARCHAR(50) NOT NULL,
+    correlation DECIMAL(3,2) NOT NULL,
+    correlation_level VARCHAR(20),
+    is_actual_team BOOLEAN,
+    window_end TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (player_id_1, player_id_2, window_end)
+);
+
+SELECT create_hypertable('player_correlations', 'window_end', if_not_exists => TRUE);
+SELECT create_hypertable('player_anomalies', 'anomaly_detected_at', if_not_exists => TRUE);
+
+CREATE INDEX IF NOT EXISTS idx_anomalies_player ON player_anomalies(player_id, anomaly_detected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_anomalies_type ON player_anomalies(anomaly_type, anomaly_detected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_anomalies_confidence ON player_anomalies(anomaly_confidence DESC) WHERE anomaly_confidence > 0.75;
+CREATE INDEX idx_correlations_p1 ON player_correlations(player_id_1, correlation DESC);
+CREATE INDEX idx_correlations_p2 ON player_correlations(player_id_2, correlation DESC);

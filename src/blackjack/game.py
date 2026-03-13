@@ -1,7 +1,6 @@
 import uuid
 import time
 from typing import List, Optional, Dict
-import redis
 import logging
 from .player import Player
 from .dealer import Dealer
@@ -42,8 +41,6 @@ class BlackjackGame:
         table_max: float = 5000.0,
         bench: Optional[List[Player]] = None,
         delay_seconds: float = 0.0,
-        redis_host: str = "localhost",
-        redis_port: int = 6379,
     ):
         self.table_id = table_id
         self.players = players.copy()
@@ -59,12 +56,6 @@ class BlackjackGame:
         self.current_round_id: str = ""
         self.shutdown_requested = False
         self.delay = delay_seconds
-        self.redis = redis.Redis(
-            host=redis_host, port=redis_port, decode_responses=True
-        )
-        self.backoff_pubsub = self.redis.pubsub(ignore_subscribe_messages=True)
-        self.backoff_pubsub.subscribe("backoffs")
-        self.backed_off_players: set[str] = set()
         self.producer = BlackjackProducer()
 
     def shutdown(self) -> None:
@@ -94,8 +85,6 @@ class BlackjackGame:
             raise
         finally:
             self.producer.close()
-            self.redis.close()
-            self.backoff_pubsub.close()
 
     def has_active_players(self) -> bool:
         return bool(self.players or self.bench)
@@ -103,29 +92,10 @@ class BlackjackGame:
     def _get_active_players_ids(self) -> list[str]:
         return [p.player_id for p in (self.players + self.bench)]
 
-    def _check_backoffs(self) -> None:
-        message = self.backoff_pubsub.get_message()
-        if message and message["type"] == "message":
-            player_id = message["data"]
-            self.backed_off_players.add(player_id)
-
-    def _remove_backed_off_players(self) -> None:
-        all_players = self.players + self.bench
-
-        for player in all_players[:]:
-            if player.player_id in self.backed_off_players:
-                if player in self.players:
-                    self.players.remove(player)
-                if player in self.bench:
-                    self.bench.remove(player)
-
     def _play_round(self) -> None:
         self.current_round_id = f"round_{uuid.uuid4().hex[:12]}"
         if self.shoe.needs_shuffle:
             self._shuffle()
-
-        self._check_backoffs()
-        self._remove_backed_off_players()
 
         self._remove_quit_players()
         self.hand_counter += 1

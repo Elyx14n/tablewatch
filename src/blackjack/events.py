@@ -13,7 +13,6 @@ class EventType(str, Enum):
     SHUFFLE = "shuffle"
     SEAT = "seat"
     UNSEAT = "unseat"
-    BACKOFF = "backoff"
     CARD_DEALT = "card_dealt"
     PLAYER_STATE = "player_state"
     ROUND_START = "round_start"
@@ -27,14 +26,6 @@ class Result(str, Enum):
     BJ = "blackjack"
     BUST = "bust"
     SURRENDER = "surrender"
-
-
-class BackoffReason(str, Enum):
-    SUSPECTED_COUNTING = "suspected_counting"
-    EXCESSIVE_WINS = "excessive_wins"
-    HIGH_BET_SPREAD = "high_bet_spread"
-    TEAM_PLAY_DETECTED = "team_play_detected"
-    BANNED = "banned"
 
 
 class Event(AvroBase):
@@ -107,15 +98,6 @@ class UnseatEvent(Event):
     team_id: Optional[str] = None
     true_count: float
     cards_remaining: int
-
-
-class BackoffEvent(Event):
-    event_type: Literal[EventType.BACKOFF] = EventType.BACKOFF
-    player_id: str
-    team_id: Optional[str] = None
-    reason: BackoffReason
-    is_permanent: bool = False
-
 
 class CardDealtEvent(Event):
     event_type: Literal[EventType.CARD_DEALT] = EventType.CARD_DEALT

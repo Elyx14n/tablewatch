@@ -17,7 +17,6 @@ services:
       KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      # Industry Standard Tuning for High Volume Simulation:
       KAFKA_LOG_RETENTION_HOURS: 24
       KAFKA_LOG_SEGMENT_BYTES: 1073741824 # 1GB segments
       KAFKA_LOG_RETENTION_BYTES: 10737418240 # 10GB max per broker
@@ -82,16 +81,60 @@ services:
       POSTGRES_PASSWORD: tablewatch
     volumes:
       - timescale_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql  # pg_cron setup
+    networks:
+      - tablewatch-network
+    command: postgres -c shared_preload_libraries=pg_cron
+
+  flink-jobmanager:
+    image: flink:1.18-scala_2.12-java11
+    container_name: tablewatch-flink-jobmanager
+    ports:
+      - "8082:8081"
+    command: jobmanager
+    environment:
+      - FLINK_PROPERTIES=jobmanager.rpc.address: flink-jobmanager
     networks:
       - tablewatch-network
 
-  redis:
-    image: redis:7-alpine
-    container_name: tablewatch-redis
-    ports:
-      - "6379:6379"
+  flink-taskmanager:
+    image: flink:1.18-scala_2.12-java11
+    container_name: tablewatch-flink-taskmanager
+    depends_on:
+      - flink-jobmanager
+    command: taskmanager
+    environment:
+      - FLINK_PROPERTIES=jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
     networks:
       - tablewatch-network
+
+  flink-jobs:
+    build: .
+    container_name: tablewatch-flink-jobs
+    depends_on:
+      - flink-jobmanager
+      - flink-taskmanager
+      - kafka
+      - timescaledb
+    env_file:
+      - .env
+    networks:
+      - tablewatch-network
+    command: >
+      bash -c "
+        echo 'Waiting for Flink cluster...' &&
+        sleep 15 &&
+        echo 'Submitting Flink jobs...' &&
+        python -m src.pipelines.anomaly.bet_spread &
+        python -m src.pipelines.anomaly.win_rate &
+        python -m src.pipelines.anomaly.bet_rate_of_change &
+        python -m src.pipelines.anomaly.wonging &
+        python -m src.pipelines.anomaly.team_correlation_prefilter &
+        echo 'All Flink jobs submitted' &&
+        wait
+      "
+    restart: unless-stopped
 
 volumes:
   kafka_kraft:
