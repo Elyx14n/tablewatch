@@ -1,3 +1,4 @@
+import json
 import psycopg2
 import random
 import multiprocessing
@@ -11,14 +12,16 @@ from blackjack.strategy import Strategy, PlayerRole
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
+
 ROOT = Path(__file__).resolve().parent
 
+
 class Setup(BaseSettings):
-    db_host: str = "localhost"
+    db_host: str = ""
     db_port: int = 5432
-    db_name: str = "tablewatch"
-    db_user: str = "tablewatch"
-    db_password: str = "tablewatch"
+    db_name: str = ""
+    db_user: str = ""
+    db_password: str = ""
     delay_seconds: float = 0.5
     queries_dir: Path = Field(default=ROOT / "db" / "queries")
     tables: List[Tuple] = Field(default_factory=list, exclude=True)
@@ -40,25 +43,51 @@ class Setup(BaseSettings):
             password=self.db_password,
         ) as conn:
             with conn.cursor() as cur:
-                table_query = (self.queries_dir / "load_active_player_tables.sql").read_text()
+                table_query = (
+                    self.queries_dir / "load_active_player_tables.sql"
+                ).read_text()
                 cur.execute(table_query)
                 self.tables = cur.fetchall()
                 print(f"Loaded {len(self.tables)} tables")
 
-                player_query = (self.queries_dir / "load_active_players.sql").read_text()
+                player_query = (
+                    self.queries_dir / "load_active_players.sql"
+                ).read_text()
                 cur.execute(player_query)
                 self.players = cur.fetchall()
                 print(f"Loaded {len(self.players)} active players")
 
     def spawn_player(self, player_row: Tuple) -> Player:
         (
-            player_id, role, team_id, bankroll, initial_bankroll,
-            skill, counting, kelly_unit, bet_spread,
-            entry_tc, exit_tc,
-            max_session_loss_pct, max_session_win_pct,
+            player_id,
+            role,
+            team_id,
+            bankroll,
+            initial_bankroll,
+            skill,
+            counting,
+            kelly_unit,
+            bet_spread,
+            entry_tc,
+            exit_tc,
+            max_session_loss_pct,
+            max_session_win_pct,
         ) = player_row
 
         rules = HouseRules()
+
+        if isinstance(bet_spread, str):
+            bet_spread_dict = json.loads(bet_spread)
+        elif isinstance(bet_spread, dict):
+            bet_spread_dict = bet_spread
+        else:
+            raise ValueError(f"Unexpected bet_spread type: {type(bet_spread)}")
+
+        bet_spread_parsed = {
+            int(k): float(v) if isinstance(v, (int, float, str)) else v
+            for k, v in bet_spread_dict.items()
+        }
+
         return Player(
             player_id=player_id,
             bankroll=float(bankroll),
@@ -73,7 +102,7 @@ class Setup(BaseSettings):
                 rules=rules,
                 skill=float(skill),
                 counting=float(counting),
-                bet_spread=bet_spread,
+                bet_spread=bet_spread_parsed,
                 kelly_unit=float(kelly_unit),
             ),
         )
@@ -81,7 +110,7 @@ class Setup(BaseSettings):
     def run_game(self, table_row: Tuple):
         table_id, table_min, table_max, num_decks, penetration = table_row
         num_players = random.randint(2, 7)
-        
+
         if len(self.players) < num_players:
             print(f"Warning: Not enough active players for {table_id}")
             return
@@ -118,9 +147,11 @@ class Setup(BaseSettings):
             executor.map(self.run_game, self.tables)
         print("All games completed")
 
+
 if __name__ == "__main__":
     # Windows/macOS requirement for multiprocessing
     multiprocessing.set_start_method("spawn", force=True)
     setup = Setup(delay_seconds=0.5)
     setup.load_fixtures()
-    setup.spawn_games(max_workers=10)
+    while True:
+        setup.spawn_games(max_workers=10)

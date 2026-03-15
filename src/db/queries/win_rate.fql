@@ -2,11 +2,12 @@ INSERT INTO
   player_anomalies WITH PlayerStats AS (
     SELECT
       player_id,
+      window_start,
       window_end,
       CAST(
         SUM(
           CASE
-          WHEN RESULT IN ('win', 'blackjack') THEN 1
+          WHEN `result` IN ('win', 'blackjack') THEN 1
           ELSE 0 END
         ) AS DOUBLE
       ) / NULLIF(COUNT(*), 0) AS win_rate,
@@ -27,27 +28,31 @@ INSERT INTO
     HAVING
       COUNT(*) >= 50
   ),
-  Percentiles AS (
+  PopulationPercentiles AS (
     SELECT
-      *,
-      PERCENTILE(win_rate, 0.25) OVER population AS q1,
-      PERCENTILE(win_rate, 0.75) OVER population AS q3
+      window_end,
+      PERCENTILE(win_rate, 0.25) AS q1,
+      PERCENTILE(win_rate, 0.75) AS q3
     FROM
-      PlayerStats WINDOW population AS (
-        ORDER
-          BY window_end ROWS BETWEEN 500 PRECEDING
-          AND CURRENT ROW
-      )
+      PlayerStats
+    GROUP BY window_end
   ),
   Scoring AS (
     SELECT
-      *,
-      (q3 - q1) AS iqr,
-      (q3 + 1.5 * (q3 - q1)) AS upper_fence
+      ps.player_id,
+      ps.window_end,
+      ps.win_rate,
+      pp.q1,
+      pp.q3,
+      (pp.q3 - pp.q1) AS iqr,
+      (pp.q3 + 1.5 * (pp.q3 - pp.q1)) AS upper_fence
     FROM
-      Percentiles
+      PlayerStats ps
+    JOIN
+      PopulationPercentiles pp
+    ON ps.window_end = pp.window_end
     WHERE
-      win_rate > 0.55
+      ps.win_rate > 0.55
   )
 SELECT
   player_id,

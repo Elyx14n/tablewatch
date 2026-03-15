@@ -31,7 +31,7 @@ SELECT
   'CARD_COUNTING' AS anomaly_type,
   LEAST((count_corr - 0.5) / 0.3, 1.0) AS anomaly_confidence,
   window_end AS anomaly_detected_at,
-  count_corr AS correlation_score
+  count_corr
 FROM
   CountCorrelation
 WHERE

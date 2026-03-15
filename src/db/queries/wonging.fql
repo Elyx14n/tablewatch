@@ -39,32 +39,14 @@ INSERT INTO
       PlayerSessions
     WHERE
       bet_sequence = 1
-  ),
-  WongingAnalysis AS (
-    SELECT
-      player_id,
-      event_time,
-      entry_count,
-      AVG(entry_count) OVER w AS avg_entry_count,
-      STDDEV(entry_count) OVER w AS stddev_entry_count
-    FROM
-      EntriesOnly WINDOW w AS (
-        PARTITION BY player_id
-        ORDER
-          BY event_time RANGE BETWEEN INTERVAL '24' HOURS PRECEDING
-          AND CURRENT ROW
-      )
   )
 SELECT
   player_id,
   'WONGING_ENTRY_ANOMALY' AS anomaly_type,
-  LEAST(avg_entry_count / 5.0, 1.0) AS anomaly_confidence,
+  LEAST(entry_count / 5.0, 1.0) AS anomaly_confidence,
   event_time AS anomaly_detected_at,
-  avg_entry_count AS wonging_score
+  entry_count AS wonging_score
 FROM
-  WongingAnalysis
+  EntriesOnly
 WHERE
-  avg_entry_count > 3.0 -- Flagging entries at high positive counts
-  AND stddev_entry_count < 1.5;
-
--- Low deviation suggests a consistent strategy
+  entry_count > 3.0;

@@ -84,41 +84,43 @@ services:
       - tablewatch-network
 
   timescaledb:
-      image: timescale/timescaledb-ha:pg16
-      container_name: tablewatch-db
-      environment:
-        - POSTGRES_DB=tablewatch
-        - POSTGRES_USER=tablewatch
-        - POSTGRES_PASSWORD=tablewatch
-        - TS_TUNE_LIBRARIES=timescaledb,pg_cron
-        - TS_TUNE_POSTGRES_CONF=cron.database_name='tablewatch'
-      volumes:
-        - timescale_data:/var/lib/postgresql/data
-        - ./src/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -d tablewatch -U tablewatch"]
-        interval: 5s
-        retries: 10
-      networks:
-            - tablewatch-network
+    image: timescale/timescaledb-ha:pg16
+    container_name: tablewatch-db
+    environment:
+      - POSTGRES_DB=tablewatch
+      - POSTGRES_USER=tablewatch
+      - POSTGRES_PASSWORD=tablewatch
+      - TS_TUNE_LIBRARIES=timescaledb,pg_cron
+      - TS_TUNE_POSTGRES_CONF=cron.database_name='tablewatch'
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./src/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d tablewatch -U tablewatch"]
+      interval: 5s
+      retries: 10
+    networks:
+      - tablewatch-network
 
   seed:
-      build: .
-      container_name: tablewatch-seed
-      env_file:
-        - .env
-      volumes:
-        - ./src:/app/src
-      depends_on:
-        timescaledb:
-          condition: service_healthy
-      networks:
-        - tablewatch-network
-      command: python -m src.db.seed
-      restart: no
+    build: .
+    container_name: tablewatch-seed
+    env_file:
+      - .env
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - tablewatch-network
+    command: python -m src.db.seed
+    restart: no
 
   flink-jobmanager:
-    image: flink:1.18-scala_2.12-java11
+    build:
+      context: .
+      dockerfile: Dockerfile.flink
     container_name: tablewatch-flink-jobmanager
     ports:
       - "8082:8081"
@@ -129,7 +131,9 @@ services:
       - tablewatch-network
 
   flink-taskmanager:
-    image: flink:1.18-scala_2.12-java11
+    build:
+      context: .
+      dockerfile: Dockerfile.flink
     container_name: tablewatch-flink-taskmanager
     depends_on:
       - flink-jobmanager
@@ -240,62 +244,6 @@ services:
     volumes:
       - ./src:/app/src
 
-  flink-job-betting-velocity-correlation:
-    build: .
-    depends_on:
-      flink-jobmanager:
-        condition: service_started
-      flink-taskmanager:
-        condition: service_started
-      kafka:
-        condition: service_healthy
-      timescaledb:
-        condition: service_healthy
-    command: bash -c "sleep 15 && python -m src.pipelines.betting_velocity_correlation"
-    restart: unless-stopped
-    networks:
-      - tablewatch-network
-    env_file:
-      - .env
-    volumes:
-      - ./src:/app/src
-
-  flink-job-recursive-network-expansion:
-    build: .
-    depends_on:
-      flink-jobmanager:
-        condition: service_started
-      flink-taskmanager:
-        condition: service_started
-      timescaledb:
-        condition: service_healthy
-    command: bash -c "sleep 15 && python -m src.pipelines.recursive_network_expansion"
-    restart: unless-stopped
-    networks:
-      - tablewatch-network
-    env_file:
-      - .env
-    volumes:
-      - ./src:/app/src
-
-  flink-job-entity-resolution-clustering:
-    build: .
-    depends_on:
-      flink-jobmanager:
-        condition: service_started
-      flink-taskmanager:
-        condition: service_started
-      timescaledb:
-        condition: service_healthy
-    command: bash -c "sleep 15 && python -m src.pipelines.entity_resolution_clustering"
-    restart: unless-stopped
-    networks:
-      - tablewatch-network
-    env_file:
-      - .env
-    volumes:
-      - ./src:/app/src
-
   team-detection-scheduler:
     build: .
     container_name: tablewatch-team-detection-scheduler
@@ -334,6 +282,8 @@ services:
     command: >
       bash -c "
         echo 'Kafka, Schema Registry, and topic are ready!' &&
+        echo 'Waiting 5 seconds for schema registry to fully initialize...' &&
+        sleep 5 &&
         echo 'Starting blackjack game simulator...' &&
         python -m src.main
       "

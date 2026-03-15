@@ -1,5 +1,6 @@
 import uuid
 import time
+import os
 from typing import List, Optional, Dict
 import logging
 from .player import Player
@@ -23,7 +24,7 @@ from .events import (
     RoundStartEvent,
     RoundEndEvent,
 )
-from ..producers.blackjack_producer import BlackjackProducer
+from producers.blackjack_producer import BlackjackProducer
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,11 @@ class BlackjackGame:
         self.current_round_id: str = ""
         self.shutdown_requested = False
         self.delay = delay_seconds
-        self.producer = BlackjackProducer()
+        self.producer = BlackjackProducer(
+            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", ""),
+            schema_registry_url=os.getenv("SCHEMA_REGISTRY_URL", ""),
+            topic=os.getenv("KAFKA_TOPIC", "blackjack"),
+        )
 
     def shutdown(self) -> None:
         self.shutdown_requested = True

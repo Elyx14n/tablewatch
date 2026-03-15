@@ -10,7 +10,7 @@ class CardCountingAnomalyJob(Stream):
         self.create_bet_events_source(config)
 
     def create_sink_table(self):
-        self.create_anomaly_sink("correlation_score DOUBLE")
+        self.create_anomaly_sink("count_corr DOUBLE")
 
     def get_query_filename(self) -> str:
         return Path(__file__).with_suffix(".fql").name

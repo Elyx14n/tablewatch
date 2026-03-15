@@ -20,6 +20,18 @@ class Stream(ABC):
         settings = EnvironmentSettings.new_instance().in_streaming_mode().build()
         self.table_env = StreamTableEnvironment.create(self.env, settings)
 
+        # Connector JARs only - using JDBC 3.2.0 which supports SinkV2 API
+        jar_files = [
+            "file:///opt/flink/lib/flink-sql-connector-kafka-3.1.0-1.18.jar",
+            "file:///opt/flink/lib/flink-sql-avro-confluent-registry-1.18.0.jar",
+            "file:///opt/flink/lib/flink-connector-jdbc-3.2.0-1.18.jar",
+            "file:///opt/flink/lib/postgresql-42.7.1.jar",
+        ]
+        self.table_env.get_config().get_configuration().set_string(
+            "pipeline.jars",
+            ";".join(jar_files)
+        )
+
     def to_data_stream(self, table_name: str):
         assert self.table_env is not None
         table = self.table_env.from_path(table_name)
@@ -31,7 +43,7 @@ class Stream(ABC):
             f"""
             CREATE TABLE bet_events (
                 event_id STRING,
-                timestamp BIGINT,
+                `timestamp` BIGINT,
                 table_id STRING,
                 round_id STRING,
                 player_id STRING,
@@ -41,7 +53,7 @@ class Stream(ABC):
                 true_count DOUBLE,
                 cards_remaining INT,
                 is_shuffle BOOLEAN,
-                event_time AS TO_TIMESTAMP(FROM_UNIXTIME(timestamp / 1000000)),
+                event_time AS TO_TIMESTAMP(FROM_UNIXTIME(`timestamp` / 1000000)),
                 WATERMARK FOR event_time AS event_time - INTERVAL '5' SECOND
             ) WITH ({conn_config})
         """
@@ -53,16 +65,16 @@ class Stream(ABC):
             f"""
             CREATE TABLE outcome_events (
                 event_id STRING,
-                timestamp BIGINT,
+                `timestamp` BIGINT,
                 table_id STRING,
                 round_id STRING,
                 player_id STRING,
-                result STRING,
+                `result` STRING,
                 payout DOUBLE,
                 player_hand_value INT,
                 dealer_upcard_value INT,
                 bankroll_after DOUBLE,
-                event_time AS TO_TIMESTAMP(FROM_UNIXTIME(timestamp / 1000000)),
+                event_time AS TO_TIMESTAMP(FROM_UNIXTIME(`timestamp` / 1000000)),
                 WATERMARK FOR event_time AS event_time - INTERVAL '5' SECOND
             ) WITH ({conn_config})
         """
@@ -111,9 +123,8 @@ class Stream(ABC):
         )
 
     def load_sql_query(self) -> str:
-        job_file = Path(self.__class__.__module__.replace(".", "/") + ".py")
-        filename = Path(job_file).with_suffix(".fql").name
-        sql_path = ROOT / "db" / "queries" / filename
+        filename = self.get_query_filename()
+        sql_path = ROOT.parent / "db" / "queries" / filename
         return sql_path.read_text()
 
     def create_kafka_conn(self, group_id, subject, extra_fields = "") -> str:
@@ -124,8 +135,8 @@ class Stream(ABC):
             'properties.group.id' = '{group_id}',
             'format' = 'avro-confluent',
             'avro-confluent.url' = '{SCHEMA_REGISTRY_URL}',
-            'avro-confluent.schema-registry.subject' = 'blackjack-com.tablewatch.blackjack.' + {subject}
-            '{extra_fields}'
+            'avro-confluent.schema-registry.subject' = 'blackjack-com.tablewatch.blackjack.{subject}'
+            {extra_fields}
         """
 
     @abstractmethod
@@ -148,7 +159,3 @@ class Stream(ABC):
         result = self.table_env.execute_sql(self.load_sql_query())
         result.wait()
         return result
-
-
-def correlation_sink_schema() -> str:
-    return "player_id_1 STRING, player_id_2 STRING, correlation DOUBLE, window_end TIMESTAMP(3), correlation_level STRING, is_actual_team BOOLEAN"

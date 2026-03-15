@@ -36,8 +36,8 @@ EVENTS = (
 class BlackjackProducer:
     def __init__(
         self,
-        bootstrap_servers: str = "localhost:9092",
-        schema_registry_url: str = "http://localhost:8081",
+        bootstrap_servers: str,
+        schema_registry_url: str,
         topic: str = "blackjack",
     ):
         self.topic = topic

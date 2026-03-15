@@ -7,7 +7,7 @@ class WinRateAnomalyJob(Stream):
             self.create_kafka_conn(
                 group_id="flink-win-rate-anomaly",
                 subject="OutcomeEvent",
-                extra_fields="""scan.startup.mode' = 'latest-offset'""",
+                extra_fields=""",'scan.startup.mode' = 'latest-offset'""",
             )
         )
 
