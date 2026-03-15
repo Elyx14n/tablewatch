@@ -11,6 +11,7 @@ INSERT INTO player_anomalies WITH WindowedBets AS (
 					INTERVAL '30' MINUTES
 				)
 			)
+		WHERE is_shuffle = FALSE
 		GROUP BY player_id,
 			window_start,
 			window_end
@@ -34,7 +35,8 @@ INSERT INTO player_anomalies WITH WindowedBets AS (
 			STDDEV(rate_of_change) OVER population AS stddev_roc
 		FROM BetVelocity WINDOW population AS (
 				PARTITION BY player_id
-				ORDER BY window_end ROWS BETWEEN 24 PRECEDING AND CURRENT ROW -- Look at the last 2 hours of change
+				ORDER BY window_end RANGE BETWEEN INTERVAL '2' HOUR PRECEDING
+					AND CURRENT ROW
 			)
 	)
 SELECT player_id,
@@ -48,6 +50,6 @@ SELECT player_id,
 	window_end AS anomaly_detected_at,
 	rate_of_change AS bet_change_rate,
 	(rate_of_change - avg_roc) / NULLIF(stddev_roc, 0) AS z_score
-FROM VelocityScoring
+FROM VelocityScoring -- Only trigger if it's 3 standard deviations above their personal norm
 WHERE (rate_of_change - avg_roc) / NULLIF(stddev_roc, 0) > 3.0
-	AND rate_of_change > 1.0
+	AND rate_of_change > 1.0;

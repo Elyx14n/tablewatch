@@ -15,7 +15,6 @@ from .events import (
     BetEvent,
     OutcomeEvent,
     ActionEvent,
-    ShuffleEvent,
     SeatEvent,
     UnseatEvent,
     PlayerStateEvent,
@@ -94,7 +93,9 @@ class BlackjackGame:
 
     def _play_round(self) -> None:
         self.current_round_id = f"round_{uuid.uuid4().hex[:12]}"
+        is_shuffle = False
         if self.shoe.needs_shuffle:
+            is_shuffle = True
             self._shuffle()
 
         self._remove_quit_players()
@@ -136,6 +137,7 @@ class BlackjackGame:
                 bankroll_after=player.bankroll,
                 true_count=true_count,
                 cards_remaining=self.shoe.cards_remaining,
+                is_shuffle=is_shuffle
             )
 
         dealer_hand = Hand(cards=[], bet=0)
@@ -400,11 +402,6 @@ class BlackjackGame:
     def _shuffle(self):
         self.shoe._reset_shoe()
         self.count.reset()
-
-        self._add_event(
-            ShuffleEvent,
-            cards_remaining=self.shoe.cards_remaining,
-        )
         if self.delay > 0:
             time.sleep(self.delay * 8)
 

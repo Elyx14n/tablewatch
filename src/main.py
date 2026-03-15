@@ -11,7 +11,7 @@ from blackjack.strategy import Strategy, PlayerRole
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent
 
 class Setup(BaseSettings):
     db_host: str = "localhost"
@@ -40,7 +40,7 @@ class Setup(BaseSettings):
             password=self.db_password,
         ) as conn:
             with conn.cursor() as cur:
-                table_query = (self.queries_dir / "load_tables_for_active_players.sql").read_text()
+                table_query = (self.queries_dir / "load_active_player_tables.sql").read_text()
                 cur.execute(table_query)
                 self.tables = cur.fetchall()
                 print(f"Loaded {len(self.tables)} tables")
@@ -80,15 +80,14 @@ class Setup(BaseSettings):
 
     def run_game(self, table_row: Tuple):
         table_id, table_min, table_max, num_decks, penetration = table_row
-        num_players = random.randint(3, 7)
+        num_players = random.randint(2, 7)
         
         if len(self.players) < num_players:
             print(f"Warning: Not enough active players for {table_id}")
             return
 
         assigned_player_rows = random.sample(self.players, num_players)
-        active_players = []
-        bench_players = []
+        active_players, bench_players = [], []
 
         for player_row in assigned_player_rows:
             player = self.spawn_player(player_row)
@@ -122,6 +121,6 @@ class Setup(BaseSettings):
 if __name__ == "__main__":
     # Windows/macOS requirement for multiprocessing
     multiprocessing.set_start_method("spawn", force=True)
-    spawner = Setup(delay_seconds=0.5)
-    spawner.load_fixtures()
-    spawner.spawn_games(max_workers=10)
+    setup = Setup(delay_seconds=0.5)
+    setup.load_fixtures()
+    setup.spawn_games(max_workers=10)

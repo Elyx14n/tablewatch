@@ -1,0 +1,60 @@
+INSERT INTO
+  player_anomalies WITH WindowStats AS (
+    SELECT
+      player_id,
+      window_end,
+      (MAX(bet_amount) / NULLIF(MIN(bet_amount), 0)) AS current_spread
+    FROM
+      TABLE(
+        HOP(
+          TABLE bet_events,
+          DESCRIPTOR(event_time),
+          INTERVAL '5' MINUTES,
+          INTERVAL '1' HOUR
+        )
+      )
+    WHERE
+      is_shuffle = FALSE
+    GROUP
+      BY player_id,
+      window_start,
+      window_end
+  ),
+  Scoring AS (
+    SELECT
+      player_id,
+      window_end,
+      current_spread,
+      AVG(current_spread) OVER w AS avg_spread,
+      STDDEV(current_spread) OVER w AS stddev_spread
+    FROM
+      WindowStats WINDOW w AS (
+        PARTITION BY player_id
+        ORDER
+          BY window_end ROWS BETWEEN 12 PRECEDING
+          AND CURRENT ROW
+      )
+  ),
+  FinalDetection AS (
+    SELECT
+      player_id,
+      'HIGH_BET_SPREAD_ZSCORE' AS anomaly_type,
+      window_end AS anomaly_detected_at,
+      current_spread,
+      (current_spread - avg_spread) / NULLIF(stddev_spread, 0) AS z_score
+    FROM
+      Scoring
+    WHERE
+      current_spread > 5.0
+  )
+SELECT
+  player_id,
+  anomaly_type,
+  LEAST(ABS(z_score) / 5.0, 1.0) AS confidence,
+  anomaly_detected_at,
+  current_spread,
+  z_score
+FROM
+  FinalDetection
+WHERE
+  z_score > 2.5;

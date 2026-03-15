@@ -58,6 +58,7 @@ class BetEvent(Event):
     bankroll_after: float
     true_count: float
     cards_remaining: int
+    is_shuffle: bool = False
 
 
 class OutcomeEvent(Event):
@@ -77,11 +78,6 @@ class ActionEvent(Event):
     player_hand_value: int
     dealer_upcard_value: int
     true_count: float
-
-
-class ShuffleEvent(Event):
-    event_type: Literal[EventType.SHUFFLE] = EventType.SHUFFLE
-    cards_remaining: int
 
 
 class SeatEvent(Event):

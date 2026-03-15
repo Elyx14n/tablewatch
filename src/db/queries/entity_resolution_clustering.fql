@@ -1,0 +1,95 @@
+INSERT INTO
+  detected_teams WITH WindowedCorrelations AS (
+    SELECT
+      player_id_1,
+      player_id_2,
+      correlation,
+      window_start,
+      window_end
+    FROM
+      TABLE(
+        TUMBLE(
+          TABLE player_correlations,
+          DESCRIPTOR(window_end),
+          INTERVAL '30' MINUTES
+        )
+      )
+    WHERE
+      correlation > 0.75
+  ),
+  DirectPairs AS (
+    SELECT
+      player_id_1 AS p1,
+      player_id_2 AS p2,
+      correlation,
+      window_end
+    FROM
+      WindowedCorrelations
+    UNION
+    ALL
+    SELECT
+      player_id_2 AS p1,
+      player_id_1 AS p2,
+      correlation,
+      window_end
+    FROM
+      WindowedCorrelations
+  ),
+  Connections AS (
+    -- Self-join stays within the SAME window_end
+    SELECT
+      d1.p1,
+      d2.p2,
+      d2.correlation,
+      d1.window_end
+    FROM
+      DirectPairs d1
+      JOIN DirectPairs d2 ON d1.p2 = d2.p1
+      AND d1.window_end = d2.window_end
+    WHERE
+      d1.p1 <> d2.p2
+  ),
+  ClusterMapping AS (
+    SELECT
+      p1 AS player_id,
+      MIN(p2) AS cluster_root,
+      AVG(correlation) AS avg_corr,
+      window_end
+    FROM
+      Connections
+    GROUP
+      BY p1,
+      window_end -- Grouping by window_end allows Flink to clear state
+  ),
+  TeamAnomalies AS (
+    SELECT
+      cm.cluster_root,
+      cm.player_id,
+      cm.avg_corr,
+      cm.window_end,
+      CASE
+      WHEN pa.anomaly_type = 'COUNT_SENSITIVITY_ANOMALY' THEN 1
+      ELSE 0 END AS is_counter
+    FROM
+      ClusterMapping cm
+      LEFT JOIN player_anomalies pa ON cm.player_id = pa.player_id
+      AND pa.anomaly_detected_at BETWEEN cm.window_end - INTERVAL '1' HOUR
+      AND cm.window_end
+  )
+SELECT
+  'TEAM_' || cluster_root AS detected_team_id,
+  COUNT(player_id) AS member_count,
+  AVG(avg_corr) AS team_correlation,
+  window_end AS detected_at,
+  -- Use the window time, not LOCALTIMESTAMP
+  CASE
+  WHEN SUM(is_counter) > 0 THEN 'AP_TEAM_' || cluster_root
+  ELSE 'SOCIABLE_CLUSTER_' || cluster_root END AS team_name,
+  ARRAY_AGG(player_id) AS player_ids
+FROM
+  TeamAnomalies
+GROUP
+  BY cluster_root,
+  window_end
+HAVING
+  COUNT(player_id) > 1;

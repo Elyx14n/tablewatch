@@ -19,7 +19,9 @@ dependencies = [
   "apache-flink>=2.2.0",
   "apache-flink-libraries>=2.2.0",
   "python-dotenv>=1.2.2",
-  "pydantic-settings>=2.13.1"
+  "pydantic-settings>=2.13.1",
+  "faker>=40.8.0",
+  "apscheduler>=3.10.0"
 ]
 
 [tool.setuptools.packages.find]

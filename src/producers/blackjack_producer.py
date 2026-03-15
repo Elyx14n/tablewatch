@@ -10,14 +10,12 @@ from blackjack.events import (
     BetEvent,
     OutcomeEvent,
     ActionEvent,
-    ShuffleEvent,
     SeatEvent,
     UnseatEvent,
     CardDealtEvent,
     RoundStartEvent,
     RoundEndEvent,
     PlayerStateEvent,
-    BackoffEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -26,14 +24,12 @@ EVENTS = (
     BetEvent,
     OutcomeEvent,
     ActionEvent,
-    ShuffleEvent,
     SeatEvent,
     UnseatEvent,
     CardDealtEvent,
     RoundStartEvent,
     RoundEndEvent,
     PlayerStateEvent,
-    BackoffEvent,
 )
 
 

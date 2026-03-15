@@ -84,26 +84,38 @@ services:
       - tablewatch-network
 
   timescaledb:
-    image: timescale/timescaledb:latest-pg16
-    container_name: tablewatch-db
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_DB: tablewatch
-      POSTGRES_USER: tablewatch
-      POSTGRES_PASSWORD: tablewatch
-    volumes:
-      - timescale_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - tablewatch-network
-    command: postgres -c shared_preload_libraries=pg_cron
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tablewatch"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+      image: timescale/timescaledb-ha:pg16
+      container_name: tablewatch-db
+      environment:
+        - POSTGRES_DB=tablewatch
+        - POSTGRES_USER=tablewatch
+        - POSTGRES_PASSWORD=tablewatch
+        - TS_TUNE_LIBRARIES=timescaledb,pg_cron
+        - TS_TUNE_POSTGRES_CONF=cron.database_name='tablewatch'
+      volumes:
+        - timescale_data:/var/lib/postgresql/data
+        - ./src/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      healthcheck:
+        test: ["CMD-SHELL", "pg_isready -d tablewatch -U tablewatch"]
+        interval: 5s
+        retries: 10
+      networks:
+            - tablewatch-network
+
+  seed:
+      build: .
+      container_name: tablewatch-seed
+      env_file:
+        - .env
+      volumes:
+        - ./src:/app/src
+      depends_on:
+        timescaledb:
+          condition: service_healthy
+      networks:
+        - tablewatch-network
+      command: python -m src.db.seed
+      restart: no
 
   flink-jobmanager:
     image: flink:1.18-scala_2.12-java11
@@ -112,7 +124,7 @@ services:
       - "8082:8081"
     command: jobmanager
     environment:
-      - FLINK_PROPERTIES=jobmanager.rpc.address: flink-jobmanager
+      FLINK_PROPERTIES: "jobmanager.rpc.address: flink-jobmanager"
     networks:
       - tablewatch-network
 
@@ -123,8 +135,8 @@ services:
       - flink-jobmanager
     command: taskmanager
     environment:
-      - FLINK_PROPERTIES=jobmanager.rpc.address: flink-jobmanager
-        taskmanager.numberOfTaskSlots: 5
+      FLINK_PROPERTIES: "jobmanager.rpc.address: flink-jobmanager"
+      TASK_MANAGER_NUMBER_OF_TASK_SLOTS: 5
     networks:
       - tablewatch-network
 
@@ -139,12 +151,14 @@ services:
         condition: service_healthy
       timescaledb:
         condition: service_healthy
-    command: bash -c "sleep 15 && python -m src.pipelines.anomaly.bet_spread"
+    command: bash -c "sleep 15 && python -m src.pipelines.bet_spread"
     restart: unless-stopped
     networks:
       - tablewatch-network
     env_file:
       - .env
+    volumes:
+      - ./src:/app/src
 
   flink-job-win-rate:
     build: .
@@ -157,12 +171,14 @@ services:
         condition: service_healthy
       timescaledb:
         condition: service_healthy
-    command: bash -c "sleep 15 && python -m src.pipelines.anomaly.win_rate"
+    command: bash -c "sleep 15 && python -m src.pipelines.win_rate"
     restart: unless-stopped
     networks:
       - tablewatch-network
     env_file:
       - .env
+    volumes:
+      - ./src:/app/src
 
   flink-job-bet-rate-of-change:
     build: .
@@ -175,12 +191,14 @@ services:
         condition: service_healthy
       timescaledb:
         condition: service_healthy
-    command: bash -c "sleep 15 && python -m src.pipelines.anomaly.bet_rate_of_change"
+    command: bash -c "sleep 15 && python -m src.pipelines.bet_rate_of_change"
     restart: unless-stopped
     networks:
       - tablewatch-network
     env_file:
       - .env
+    volumes:
+      - ./src:/app/src
 
   flink-job-wonging:
     build: .
@@ -193,14 +211,16 @@ services:
         condition: service_healthy
       timescaledb:
         condition: service_healthy
-    command: bash -c "sleep 15 && python -m src.pipelines.anomaly.wonging"
+    command: bash -c "sleep 15 && python -m src.pipelines.wonging"
     restart: unless-stopped
     networks:
       - tablewatch-network
     env_file:
       - .env
+    volumes:
+      - ./src:/app/src
 
-  flink-job-team_correlation_prefilter:
+  flink-job-card-counting:
     build: .
     depends_on:
       flink-jobmanager:
@@ -211,12 +231,91 @@ services:
         condition: service_healthy
       timescaledb:
         condition: service_healthy
-    command: bash -c "sleep 15 && python -m src.pipelines.anomaly.team_correlation_prefilter"
+    command: bash -c "sleep 15 && python -m src.pipelines.card_counting"
     restart: unless-stopped
     networks:
       - tablewatch-network
     env_file:
       - .env
+    volumes:
+      - ./src:/app/src
+
+  flink-job-betting-velocity-correlation:
+    build: .
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    command: bash -c "sleep 15 && python -m src.pipelines.betting_velocity_correlation"
+    restart: unless-stopped
+    networks:
+      - tablewatch-network
+    env_file:
+      - .env
+    volumes:
+      - ./src:/app/src
+
+  flink-job-recursive-network-expansion:
+    build: .
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      timescaledb:
+        condition: service_healthy
+    command: bash -c "sleep 15 && python -m src.pipelines.recursive_network_expansion"
+    restart: unless-stopped
+    networks:
+      - tablewatch-network
+    env_file:
+      - .env
+    volumes:
+      - ./src:/app/src
+
+  flink-job-entity-resolution-clustering:
+    build: .
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      timescaledb:
+        condition: service_healthy
+    command: bash -c "sleep 15 && python -m src.pipelines.entity_resolution_clustering"
+    restart: unless-stopped
+    networks:
+      - tablewatch-network
+    env_file:
+      - .env
+    volumes:
+      - ./src:/app/src
+
+  team-detection-scheduler:
+    build: .
+    container_name: tablewatch-team-detection-scheduler
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    command: bash -c "sleep 20 && python -m src.pipelines.team_detection"
+    restart: unless-stopped
+    networks:
+      - tablewatch-network
+    env_file:
+      - .env
+    volumes:
+      - ./src:/app/src
 
   main:
     build: .
@@ -239,33 +338,30 @@ services:
         python -m src.main
       "
     restart: unless-stopped
-  
-  seed:
-    build: .
-    container_name: tablewatch-seed
+    volumes:
+      - ./src:/app/src
+
+  grafana:
+    pull_policy: always
+    image: grafana/grafana
+    container_name: ${GRAFANA_CONTAINER_NAME}
+    env_file: .env
+    ports:
+      - ${GRAFANA_PORT}:${GRAFANA_PORT}
     depends_on:
-      - timescaledb:
+      timescaledb:
         condition: service_healthy
-    env_file:
-      - .env
     networks:
       - tablewatch-network
-    command: >
-      bash -c "
-        echo 'Seeding and flushing old player data...' &&
-        python -m src.db.seed
-        echo 'Seeding completed, initializing tables...'
-        psql postgresql://tablewatch:tablewatch@timescaledb:5432/tablewatch -f /app/src/db/schema.sql &&
-        echo 'Loading seed data...' &&
-        psql postgresql://tablewatch:tablewatch@timescaledb:5432/tablewatch -f /app/src/db/seed_data.sql &&
-        echo 'Seed data loaded successfully!'
-      "
-    restart: no
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./src/db/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
 
 
 volumes:
   kafka_kraft:
   timescale_data:
+  grafana_data:
 
 networks:
   tablewatch-network:
