@@ -7,12 +7,14 @@ class WinRateAnomalyJob(Stream):
             self.create_kafka_conn(
                 group_id="flink-win-rate-anomaly",
                 subject="OutcomeEvent",
-                extra_fields=""",'scan.startup.mode' = 'latest-offset'""",
             )
         )
 
     def create_sink_table(self):
-        self.create_anomaly_sink("win_rate DOUBLE, q1 DOUBLE, q3 DOUBLE, iqr DOUBLE")
+        self.create_anomaly_sink("win_rate DOUBLE, z_score DOUBLE")
+
+    def get_job_name(self) -> str:
+        return "win_rate"
 
     def get_query_filename(self) -> str:
         return Path(__file__).with_suffix(".fql").name

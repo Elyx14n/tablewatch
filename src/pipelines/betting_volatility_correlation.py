@@ -19,6 +19,9 @@ class BettingVolatilityCorrelationJob(Stream):
                 WATERMARK FOR window_end AS window_end - INTERVAL '5' SECOND"""
         )
 
+    def get_job_name(self) -> str:
+        return "betting_volatility_correlation"
+
     def get_query_filename(self) -> str:
         return Path(__file__).with_suffix(".fql").name
 

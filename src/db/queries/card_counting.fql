@@ -3,10 +3,12 @@ INSERT INTO
     SELECT
       player_id,
       window_end,
-      CORR(
-        CAST(bet_amount AS DOUBLE),
-        CAST(true_count AS DOUBLE)
-      ) AS count_corr,
+      (AVG(CAST(bet_amount AS DOUBLE) * CAST(true_count AS DOUBLE))
+        - AVG(CAST(bet_amount AS DOUBLE)) * AVG(CAST(true_count AS DOUBLE)))
+        / NULLIF(SQRT(
+            (AVG(CAST(bet_amount AS DOUBLE) * CAST(bet_amount AS DOUBLE)) - AVG(CAST(bet_amount AS DOUBLE)) * AVG(CAST(bet_amount AS DOUBLE)))
+            * (AVG(CAST(true_count AS DOUBLE) * CAST(true_count AS DOUBLE)) - AVG(CAST(true_count AS DOUBLE)) * AVG(CAST(true_count AS DOUBLE)))
+        ), 0) AS count_corr,
       COUNT(*) AS hand_count
     FROM
       TABLE(

@@ -206,7 +206,7 @@ def build_seed_data(num_players=15000, num_tables=1000):
 def perform_seed():
     players, tables = build_seed_data()
     conn = None
-    for _ in range(5):
+    for attempt in range(30):
         try:
             conn = psycopg2.connect(
                 host=os.getenv("DB_HOST", "timescaledb"),
@@ -216,9 +216,9 @@ def perform_seed():
                 port=os.getenv("DB_PORT", "5432"),
             )
             break
-        except:
-            print("Waiting for DB...")
-            time.sleep(2)
+        except Exception as e:
+            print(f"Waiting for DB (attempt {attempt + 1}/30): {e}")
+            time.sleep(5)
 
     if not conn:
         raise Exception("DB Connection Failed")

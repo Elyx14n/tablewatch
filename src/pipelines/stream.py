@@ -4,6 +4,11 @@ from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.table import StreamTableEnvironment, EnvironmentSettings
 from .constants import *
 
+_SUBJECT_TOPIC = {
+    "BetEvent": BET_TOPIC,
+    "OutcomeEvent": OUTCOME_TOPIC,
+}
+
 ROOT = Path(__file__).resolve().parent
 
 
@@ -19,18 +24,11 @@ class Stream(ABC):
 
         settings = EnvironmentSettings.new_instance().in_streaming_mode().build()
         self.table_env = StreamTableEnvironment.create(self.env, settings)
+        self.table_env.get_config().set("pipeline.name", self.get_job_name())
+        self.table_env.get_config().set("restart-strategy", "fixed-delay")
+        self.table_env.get_config().set("restart-strategy.fixed-delay.attempts", "10")
+        self.table_env.get_config().set("restart-strategy.fixed-delay.delay", "15 s")
 
-        # Connector JARs only - using JDBC 3.2.0 which supports SinkV2 API
-        jar_files = [
-            "file:///opt/flink/lib/flink-sql-connector-kafka-3.1.0-1.18.jar",
-            "file:///opt/flink/lib/flink-sql-avro-confluent-registry-1.18.0.jar",
-            "file:///opt/flink/lib/flink-connector-jdbc-3.2.0-1.18.jar",
-            "file:///opt/flink/lib/postgresql-42.7.1.jar",
-        ]
-        self.table_env.get_config().get_configuration().set_string(
-            "pipeline.jars",
-            ";".join(jar_files)
-        )
 
     def to_data_stream(self, table_name: str):
         assert self.table_env is not None
@@ -42,17 +40,17 @@ class Stream(ABC):
         self.table_env.execute_sql(
             f"""
             CREATE TABLE bet_events (
-                event_id STRING,
-                `timestamp` BIGINT,
-                table_id STRING,
-                round_id STRING,
-                player_id STRING,
+                event_id STRING NOT NULL,
+                `timestamp` BIGINT NOT NULL,
+                table_id STRING NOT NULL,
+                round_id STRING NOT NULL,
+                player_id STRING NOT NULL,
                 team_id STRING,
-                bet_amount DOUBLE,
-                bankroll_after DOUBLE,
-                true_count DOUBLE,
-                cards_remaining INT,
-                is_shuffle BOOLEAN,
+                bet_amount DOUBLE NOT NULL,
+                bankroll_after DOUBLE NOT NULL,
+                true_count DOUBLE NOT NULL,
+                cards_remaining BIGINT NOT NULL,
+                is_shuffle BOOLEAN NOT NULL,
                 event_time AS TO_TIMESTAMP(FROM_UNIXTIME(`timestamp` / 1000000)),
                 WATERMARK FOR event_time AS event_time - INTERVAL '5' SECOND
             ) WITH ({conn_config})
@@ -64,16 +62,16 @@ class Stream(ABC):
         self.table_env.execute_sql(
             f"""
             CREATE TABLE outcome_events (
-                event_id STRING,
-                `timestamp` BIGINT,
-                table_id STRING,
-                round_id STRING,
-                player_id STRING,
-                `result` STRING,
-                payout DOUBLE,
-                player_hand_value INT,
-                dealer_upcard_value INT,
-                bankroll_after DOUBLE,
+                event_id STRING NOT NULL,
+                `timestamp` BIGINT NOT NULL,
+                table_id STRING NOT NULL,
+                round_id STRING NOT NULL,
+                player_id STRING NOT NULL,
+                `result` STRING NOT NULL,
+                payout DOUBLE NOT NULL,
+                player_hand_value BIGINT,
+                dealer_upcard_value BIGINT,
+                bankroll_after DOUBLE NOT NULL,
                 event_time AS TO_TIMESTAMP(FROM_UNIXTIME(`timestamp` / 1000000)),
                 WATERMARK FOR event_time AS event_time - INTERVAL '5' SECOND
             ) WITH ({conn_config})
@@ -90,7 +88,7 @@ class Stream(ABC):
                 anomaly_confidence DOUBLE,
                 anomaly_detected_at TIMESTAMP(3),
                 {schema_fields},
-                PRIMARY KEY (player_id, anomaly_detected_at) NOT ENFORCED
+                PRIMARY KEY (player_id, anomaly_type, anomaly_detected_at) NOT ENFORCED
             ) WITH ({POSTGRES_CONN_ANOMALY})
         """
         )
@@ -128,14 +126,19 @@ class Stream(ABC):
         return sql_path.read_text()
 
     def create_kafka_conn(self, group_id, subject, extra_fields = "") -> str:
+        topic = _SUBJECT_TOPIC.get(subject, KAFKA_TOPIC)
         return f"""
             'connector' = 'kafka',
-            'topic' = '{KAFKA_TOPIC}',
+            'topic' = '{topic}',
             'properties.bootstrap.servers' = '{KAFKA_BOOTSTRAP_SERVERS}',
             'properties.group.id' = '{group_id}',
+            'scan.startup.mode' = 'latest-offset',
             'format' = 'avro-confluent',
             'avro-confluent.url' = '{SCHEMA_REGISTRY_URL}',
-            'avro-confluent.schema-registry.subject' = 'blackjack-com.tablewatch.blackjack.{subject}'
+            'avro-confluent.schema-registry.subject' = '{topic}-com.tablewatch.blackjack.{subject}',
+            'properties.request.timeout.ms' = '60000',
+            'properties.session.timeout.ms' = '45000',
+            'properties.heartbeat.interval.ms' = '3000'
             {extra_fields}
         """
 
@@ -148,6 +151,10 @@ class Stream(ABC):
         pass
 
     @abstractmethod
+    def get_job_name(self) -> str:
+        pass
+
+    @abstractmethod
     def get_query_filename(self) -> str:
         pass
 
@@ -157,5 +164,4 @@ class Stream(ABC):
         self.create_sink_table()
         assert self.table_env is not None
         result = self.table_env.execute_sql(self.load_sql_query())
-        result.wait()
         return result

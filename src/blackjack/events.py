@@ -64,7 +64,7 @@ class BetEvent(Event):
 class OutcomeEvent(Event):
     event_type: Literal[EventType.OUTCOME] = EventType.OUTCOME
     player_id: str
-    result: Result
+    result: str
     payout: float
     player_hand_value: Optional[int] = None
     dealer_upcard_value: Optional[int] = None

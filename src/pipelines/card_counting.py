@@ -12,6 +12,9 @@ class CardCountingAnomalyJob(Stream):
     def create_sink_table(self):
         self.create_anomaly_sink("count_corr DOUBLE")
 
+    def get_job_name(self) -> str:
+        return "card_counting"
+
     def get_query_filename(self) -> str:
         return Path(__file__).with_suffix(".fql").name
 

@@ -1,0 +1,7 @@
+{
+    email {$CADDY_EMAIL}
+}
+
+{$DOMAIN} {
+    reverse_proxy grafana:3000
+}

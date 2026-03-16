@@ -11,6 +11,9 @@ class WongingAnomalyJob(Stream):
     def create_sink_table(self):
         self.create_anomaly_sink("wonging_score DOUBLE")
 
+    def get_job_name(self) -> str:
+        return "wonging"
+
     def get_query_filename(self) -> str:
         return Path(__file__).with_suffix(".fql").name
 

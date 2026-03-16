@@ -1,9 +1,8 @@
-INSERT INTO player_anomalies WITH WindowedBets AS (
+INSERT INTO player_anomalies WITH ShortWindow AS (
 		SELECT player_id,
-			window_start,
 			window_end,
-			AVG(bet_amount) AS avg_bet_amount,
-			COUNT(*) as hand_count
+			window_time,
+			AVG(bet_amount) AS short_avg
 		FROM TABLE(
 				HOP(
 					TABLE bet_events,
@@ -15,24 +14,38 @@ INSERT INTO player_anomalies WITH WindowedBets AS (
 		WHERE is_shuffle = FALSE
 		GROUP BY player_id,
 			window_start,
-			window_end
-		HAVING COUNT(*) >= 10
+			window_end,
+			window_time
+		HAVING COUNT(*) >= 5
 	),
-	BetVelocity AS (
+	LongWindow AS (
 		SELECT player_id,
 			window_end,
-			avg_bet_amount,
-			(avg_bet_amount - LAG(avg_bet_amount, 1) OVER w) / NULLIF(LAG(avg_bet_amount, 1) OVER w, 0) AS rate_of_change
-		FROM WindowedBets WINDOW w AS (
-				PARTITION BY player_id
-				ORDER BY window_end
+			window_time,
+			AVG(bet_amount) AS long_avg
+		FROM TABLE(
+				HOP(
+					TABLE bet_events,
+					DESCRIPTOR(event_time),
+					INTERVAL '5' MINUTES,
+					INTERVAL '2' HOURS
+				)
 			)
+		WHERE is_shuffle = FALSE
+		GROUP BY player_id,
+			window_start,
+			window_end,
+			window_time
+		HAVING COUNT(*) >= 20
 	)
-SELECT player_id,
+SELECT s.player_id,
 	'BET_VELOCITY_SPIKE' AS anomaly_type,
-	LEAST(ABS(rate_of_change), 1.0) AS anomaly_confidence,
-	window_end AS anomaly_detected_at,
-	rate_of_change AS bet_change_rate,
-	rate_of_change AS z_score
-FROM BetVelocity
-WHERE rate_of_change > 2.0;
+	LEAST(s.short_avg / NULLIF(l.long_avg, 0) - 1.0, 1.0) AS anomaly_confidence,
+	s.window_end AS anomaly_detected_at,
+	s.short_avg / NULLIF(l.long_avg, 0) - 1.0 AS bet_change_rate,
+	s.short_avg / NULLIF(l.long_avg, 0) - 1.0 AS z_score
+FROM ShortWindow s
+JOIN LongWindow l
+	ON s.player_id = l.player_id
+	AND l.window_time BETWEEN s.window_time - INTERVAL '1' SECOND AND s.window_time + INTERVAL '1' SECOND
+WHERE s.short_avg / NULLIF(l.long_avg, 0) - 1.0 > 2.0;

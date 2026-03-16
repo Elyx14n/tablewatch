@@ -1,10 +1,10 @@
 # Start all services
 up:
-	docker compose up -d
+	docker compose up -d --wait
 
 # Stop and remove all services (including volumes)
 down:
-	docker compose down -v
+	docker compose down -v --remove-orphans
 
 # Show running containers
 ps:
@@ -66,3 +66,33 @@ logs-schema:
 # Restart Kafka UI (useful after config changes)
 restart-ui:
 	docker compose restart kafka-ui
+
+STREAMING_JOBS = bet_spread win_rate bet_rate_of_change wonging card_counting betting_volatility_correlation
+
+# Submit all 6 streaming jobs to the Flink cluster (detached)
+jobs:
+	@for job in $(STREAMING_JOBS); do \
+		echo "Submitting $$job..."; \
+		docker compose exec flink-jobmanager flink run \
+			--pyModule pipelines.$$job \
+			--pyFiles /opt/src \
+			-d; \
+	done
+
+# List running Flink jobs
+jobs-list:
+	docker compose exec flink-jobmanager flink list -r
+
+# Cancel all running Flink jobs
+jobs-cancel:
+	docker compose exec flink-jobmanager flink list -r 2>/dev/null \
+		| awk '/RUNNING/{print $$4}' \
+		| xargs -r -I{} docker compose exec flink-jobmanager flink cancel {}
+
+# View Flink job logs
+logs-flink:
+	docker compose logs -f flink-jobmanager flink-taskmanager
+
+# View team detection logs
+logs-team:
+	docker compose logs -f team-detection

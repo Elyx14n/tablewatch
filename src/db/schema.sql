@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+
 CREATE TABLE IF NOT EXISTS tables (
     table_id TEXT PRIMARY KEY,
     table_min DECIMAL(10, 2) DEFAULT 25.0,
@@ -64,11 +66,9 @@ CREATE TABLE IF NOT EXISTS player_anomalies (
     bet_spread DECIMAL(8, 2),
     z_score DECIMAL(8, 4),
     win_rate DECIMAL(5, 4),
-    q1 DECIMAL(5, 4),
-    q3 DECIMAL(5, 4),
-    iqr DECIMAL(5, 4),
     bet_change_rate DECIMAL(5, 4),
     wonging_score DECIMAL(3, 2),
+    count_corr DECIMAL(8, 4),
     team_correlation DECIMAL(3, 2),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (player_id, anomaly_type, anomaly_detected_at)

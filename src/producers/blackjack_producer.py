@@ -1,6 +1,7 @@
 from typing import List, Dict
 import logging
 import json
+import os
 from confluent_kafka import Producer
 from confluent_kafka.schema_registry import SchemaRegistryClient, topic_record_subject_name_strategy  # type: ignore
 from confluent_kafka.schema_registry.avro import AvroSerializer  # type: ignore
@@ -41,6 +42,8 @@ class BlackjackProducer:
         topic: str = "blackjack",
     ):
         self.topic = topic
+        self.bet_topic = os.getenv("BET_TOPIC", "bet_events")
+        self.outcome_topic = os.getenv("OUTCOME_TOPIC", "outcome_events")
         self.producer = Producer(
             {
                 "bootstrap.servers": bootstrap_servers,
@@ -65,12 +68,20 @@ class BlackjackProducer:
             )
         return self._serializers[event_type]
 
+    def _get_topic(self, event: Event) -> str:
+        if isinstance(event, BetEvent):
+            return self.bet_topic
+        if isinstance(event, OutcomeEvent):
+            return self.outcome_topic
+        return self.topic
+
     def send_event(self, event: Event) -> None:
         key = event.table_id
+        topic = self._get_topic(event)
 
         serializer = self._get_serializer(type(event))
         key_bytes = self.key_serializer(
-            key, SerializationContext(self.topic, MessageField.KEY)
+            key, SerializationContext(topic, MessageField.KEY)
         )
 
         event_dict = event.model_dump()
@@ -81,11 +92,11 @@ class BlackjackProducer:
             )
 
         value_bytes = serializer(
-            event_dict, SerializationContext(self.topic, MessageField.VALUE)
+            event_dict, SerializationContext(topic, MessageField.VALUE)
         )
 
         self.producer.produce(
-            topic=self.topic,
+            topic=topic,
             key=key_bytes,
             value=value_bytes,
             on_delivery=lambda err, msg: print(f"Error: {err}") if err else None,

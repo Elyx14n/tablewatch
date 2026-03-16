@@ -12,6 +12,9 @@ class BetRateOfChangeAnomalyJob(Stream):
     def create_sink_table(self):
         self.create_anomaly_sink("bet_change_rate DOUBLE, z_score DOUBLE")
 
+    def get_job_name(self) -> str:
+        return "bet_rate_of_change"
+
     def get_query_filename(self) -> str:
         return Path(__file__).with_suffix(".fql").name
 

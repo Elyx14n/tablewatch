@@ -1,11 +1,37 @@
-FROM flink:1.18-scala_2.12-java11
+FROM flink:1.18.1-scala_2.12-java11
 
-# Download Flink SQL Kafka connector
-RUN wget -P /opt/flink/lib https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.1.0-1.18/flink-sql-connector-kafka-3.1.0-1.18.jar
+# Compile Python 3.10.14 from source (same approach as reference)
+RUN apt-get update -y && \
+    apt-get install -y build-essential libssl-dev zlib1g-dev libbz2-dev libffi-dev liblzma-dev libpq-dev wget && \
+    wget https://www.python.org/ftp/python/3.10.14/Python-3.10.14.tgz && \
+    tar -xvf Python-3.10.14.tgz && \
+    cd Python-3.10.14 && \
+    ./configure --without-tests --enable-shared && \
+    make -j6 && \
+    make install && \
+    ldconfig /usr/local/lib && \
+    cd .. && rm -f Python-3.10.14.tgz && rm -rf Python-3.10.14 && \
+    ln -sf /usr/local/bin/python3 /usr/local/bin/python && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Download Flink Avro Confluent connector
-RUN wget -P /opt/flink/lib https://repo1.maven.org/maven2/org/apache/flink/flink-sql-avro-confluent-registry/1.18.0/flink-sql-avro-confluent-registry-1.18.0.jar
+# Install pip
+RUN wget -q https://bootstrap.pypa.io/get-pip.py && \
+    python get-pip.py && \
+    rm get-pip.py
 
-# Download JDBC connector for PostgreSQL sink (3.2.0 supports SinkV2)
-RUN wget -P /opt/flink/lib https://repo1.maven.org/maven2/org/apache/flink/flink-connector-jdbc/3.2.0-1.18/flink-connector-jdbc-3.2.0-1.18.jar && \
-    wget -P /opt/flink/lib https://jdbc.postgresql.org/download/postgresql-42.7.1.jar
+# Bake connector JARs + flink-python JAR into /opt/flink/lib/
+# flink-python is required for Python job execution on the Flink cluster
+RUN wget -P /opt/flink/lib \
+    https://repo1.maven.org/maven2/org/apache/flink/flink-python/1.18.0/flink-python-1.18.0.jar \
+    https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.1.0-1.18/flink-sql-connector-kafka-3.1.0-1.18.jar \
+    https://repo1.maven.org/maven2/org/apache/flink/flink-sql-avro-confluent-registry/1.18.0/flink-sql-avro-confluent-registry-1.18.0.jar \
+    https://repo1.maven.org/maven2/org/apache/flink/flink-connector-jdbc/3.1.2-1.18/flink-connector-jdbc-3.1.2-1.18.jar \
+    https://jdbc.postgresql.org/download/postgresql-42.7.1.jar
+
+# Install Python dependencies (no source copy — source is volume-mounted at runtime)
+WORKDIR /opt/flink
+COPY pyproject.toml .
+RUN mkdir src && pip install --no-cache-dir .
+
+ENV PYTHONUNBUFFERED=1
