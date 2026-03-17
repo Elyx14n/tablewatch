@@ -48,4 +48,4 @@ FROM ShortWindow s
 JOIN LongWindow l
 	ON s.player_id = l.player_id
 	AND l.window_time BETWEEN s.window_time - INTERVAL '1' SECOND AND s.window_time + INTERVAL '1' SECOND
-WHERE s.short_avg / NULLIF(l.long_avg, 0) - 1.0 > 2.0;
+WHERE s.short_avg / NULLIF(l.long_avg, 0) - 1.0 > 0.5;

@@ -138,6 +138,7 @@ class BlackjackGame:
             self._add_event(
                 BetEvent,
                 player_id=player.player_id,
+                team_id=player.team_id,
                 bet_amount=bet,
                 bankroll_after=player.bankroll,
                 true_count=true_count,

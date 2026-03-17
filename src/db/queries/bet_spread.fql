@@ -11,7 +11,7 @@ INSERT INTO
           TABLE bet_events,
           DESCRIPTOR(event_time),
           INTERVAL '5' MINUTES,
-          INTERVAL '1' HOUR
+          INTERVAL '15' MINUTES
         )
       )
     WHERE

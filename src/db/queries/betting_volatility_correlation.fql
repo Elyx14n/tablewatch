@@ -1,79 +1,77 @@
 INSERT INTO
-  player_correlations WITH FilteredBets AS (
-    SELECT
-      player_id,
-      team_id,
-      table_id,
-      event_time,
-      bet_amount
-    FROM
-      bet_events
-    WHERE
-      is_shuffle = FALSE
-  ),
-  PlayerPairs AS (
-    SELECT
-      A.player_id AS player_id_1,
-      b.player_id AS player_id_2,
-      A.table_id,
-      A.event_time AS pair_time
-    FROM
-      FilteredBets A
-      INNER JOIN FilteredBets b ON A.table_id = b.table_id
-      AND A.event_time = b.event_time
-      AND A.player_id < b.player_id
-  ),
-  WindowedPairs AS (
-    SELECT
-      pp.player_id_1,
-      pp.player_id_2,
-      pp.table_id,
-      pp.window_start,
-      pp.window_end,
-      (AVG(A.bet_amount * b.bet_amount) - AVG(A.bet_amount) * AVG(b.bet_amount))
-        / NULLIF(SQRT(
-            (AVG(A.bet_amount * A.bet_amount) - AVG(A.bet_amount) * AVG(A.bet_amount))
-            * (AVG(b.bet_amount * b.bet_amount) - AVG(b.bet_amount) * AVG(b.bet_amount))
-        ), 0) AS correlation,
-      COUNT(*) AS shared_hands,
-      MAX(
-        A.team_id = b.team_id
-        AND A.team_id IS NOT NULL
-      ) AS is_actual_team
-    FROM
-      TABLE(
-        HOP(
-          TABLE PlayerPairs,
-          DESCRIPTOR(pair_time),
-          INTERVAL '5' MINUTES,
-          INTERVAL '1' HOUR
-        )
-      ) pp
-      INNER JOIN FilteredBets A ON pp.player_id_1 = A.player_id
-      AND pp.table_id = A.table_id
-      AND A.event_time >= pp.window_start
-      AND A.event_time < pp.window_end
-      INNER JOIN FilteredBets b ON pp.player_id_2 = b.player_id
-      AND pp.table_id = b.table_id
-      AND b.event_time >= pp.window_start
-      AND b.event_time < pp.window_end
-      AND A.event_time = b.event_time
-    GROUP
-      BY pp.player_id_1,
-      pp.player_id_2,
-      pp.table_id,
-      pp.window_start,
-      pp.window_end
-    HAVING
-      COUNT(*) >= 20
-  )
+  player_correlations
+WITH FilteredBets AS (
+  SELECT
+    player_id,
+    team_id,
+    table_id,
+    round_id,
+    event_time,
+    bet_amount
+  FROM
+    bet_events
+  WHERE
+    is_shuffle = FALSE
+),
+PlayerPairBets AS (
+  SELECT
+    A.player_id AS player_id_1,
+    b.player_id AS player_id_2,
+    A.team_id AS team_id_1,
+    b.team_id AS team_id_2,
+    A.table_id,
+    A.event_time AS pair_time,
+    A.bet_amount AS bet_amount_1,
+    b.bet_amount AS bet_amount_2
+  FROM
+    FilteredBets A
+    INNER JOIN FilteredBets b ON A.table_id = b.table_id
+    AND A.round_id = b.round_id
+    AND A.player_id < b.player_id
+    AND b.event_time BETWEEN A.event_time - INTERVAL '30' SECONDS
+    AND A.event_time + INTERVAL '30' SECONDS
+),
+WindowedStats AS (
+  SELECT
+    player_id_1,
+    player_id_2,
+    window_end,
+    COUNT(*) AS shared_hands,
+    AVG(bet_amount_1 * bet_amount_2) - AVG(bet_amount_1) * AVG(bet_amount_2) AS cov,
+    (AVG(bet_amount_1 * bet_amount_1) - AVG(bet_amount_1) * AVG(bet_amount_1))
+      * (AVG(bet_amount_2 * bet_amount_2) - AVG(bet_amount_2) * AVG(bet_amount_2)) AS var_product,
+    MAX(
+      CASE
+        WHEN team_id_1 = team_id_2
+        AND team_id_1 IS NOT NULL THEN 1
+        ELSE 0
+      END
+    ) > 0 AS is_actual_team
+  FROM
+    TABLE(
+      HOP(
+        TABLE PlayerPairBets,
+        DESCRIPTOR(pair_time),
+        INTERVAL '5' MINUTES,
+        INTERVAL '30' MINUTES
+      )
+    )
+  GROUP BY
+    player_id_1,
+    player_id_2,
+    window_start,
+    window_end
+  HAVING
+    COUNT(*) >= 10
+)
 SELECT
   player_id_1,
   player_id_2,
-  correlation,
+  cov / NULLIF(SQRT(var_product), 0) AS correlation,
   window_end,
   is_actual_team
 FROM
-  WindowedPairs
+  WindowedStats
 WHERE
-  correlation > 0.6;
+  var_product > 0
+  AND cov / NULLIF(SQRT(var_product), 0) > 0.6

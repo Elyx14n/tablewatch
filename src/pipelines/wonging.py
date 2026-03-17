@@ -4,8 +4,8 @@ from .stream import Stream
 
 class WongingAnomalyJob(Stream):
     def create_source_tables(self):
-        self.create_bet_events_source(
-            self.create_kafka_conn(group_id="flink-wonging-anomaly", subject="BetEvent")
+        self.create_seat_events_source(
+            self.create_kafka_conn(group_id="flink-wonging-anomaly", subject="SeatEvent")
         )
 
     def create_sink_table(self):

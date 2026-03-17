@@ -7,6 +7,7 @@ from .constants import *
 _SUBJECT_TOPIC = {
     "BetEvent": BET_TOPIC,
     "OutcomeEvent": OUTCOME_TOPIC,
+    "SeatEvent": SEAT_TOPIC,
 }
 
 ROOT = Path(__file__).resolve().parent
@@ -51,6 +52,25 @@ class Stream(ABC):
                 true_count DOUBLE NOT NULL,
                 cards_remaining BIGINT NOT NULL,
                 is_shuffle BOOLEAN NOT NULL,
+                event_time AS TO_TIMESTAMP(FROM_UNIXTIME(`timestamp` / 1000000)),
+                WATERMARK FOR event_time AS event_time - INTERVAL '5' SECOND
+            ) WITH ({conn_config})
+        """
+        )
+
+    def create_seat_events_source(self, conn_config):
+        assert self.table_env is not None
+        self.table_env.execute_sql(
+            f"""
+            CREATE TABLE seat_events (
+                event_id STRING NOT NULL,
+                `timestamp` BIGINT NOT NULL,
+                table_id STRING NOT NULL,
+                round_id STRING NOT NULL,
+                player_id STRING NOT NULL,
+                team_id STRING,
+                true_count DOUBLE NOT NULL,
+                cards_remaining BIGINT NOT NULL,
                 event_time AS TO_TIMESTAMP(FROM_UNIXTIME(`timestamp` / 1000000)),
                 WATERMARK FOR event_time AS event_time - INTERVAL '5' SECOND
             ) WITH ({conn_config})

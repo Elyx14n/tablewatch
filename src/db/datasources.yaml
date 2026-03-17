@@ -9,6 +9,7 @@ datasources:
     secureJsonData:
       password: tablewatch
     jsonData:
+      database: tablewatch
       sslmode: 'disable'
       postgresVersion: 1600
       timescaledb: true

@@ -2,8 +2,12 @@
 up:
 	docker compose up -d --wait
 
-# Stop and remove all services (including volumes)
+# Stop and remove all services (keeps volumes)
 down:
+	docker compose down --remove-orphans
+
+# Stop and remove all services AND wipe all volumes (full reset)
+nuke:
 	docker compose down -v --remove-orphans
 
 # Show running containers

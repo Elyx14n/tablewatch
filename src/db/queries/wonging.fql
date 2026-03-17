@@ -1,35 +1,12 @@
 INSERT INTO
-  player_anomalies WITH WindowedEntries AS (
-    SELECT
-      player_id,
-      window_end,
-      true_count,
-      ROW_NUMBER() OVER (
-        PARTITION BY player_id,
-        window_start
-        ORDER BY
-          event_time ASC
-      ) AS bet_sequence
-    FROM
-      TABLE(
-        HOP(
-          TABLE bet_events,
-          DESCRIPTOR(event_time),
-          INTERVAL '5' MINUTES,
-          INTERVAL '1' HOUR
-        )
-      )
-    WHERE
-      is_shuffle = FALSE
-  )
+  player_anomalies
 SELECT
   player_id,
   'WONGING_ENTRY_ANOMALY' AS anomaly_type,
-  LEAST(true_count / 5.0, 1.0) AS anomaly_confidence,
-  window_end AS anomaly_detected_at,
+  LEAST(true_count / 4.0, 1.0) AS anomaly_confidence,
+  event_time AS anomaly_detected_at,
   true_count AS wonging_score
 FROM
-  WindowedEntries
+  seat_events
 WHERE
-  bet_sequence = 1
-  AND true_count > 3.0;
+  true_count >= 1.0

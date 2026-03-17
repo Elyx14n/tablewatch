@@ -1,0 +1,716 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Blackjack anomaly detection dashboard",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "PDABFAD0EE8D6FA21"
+      },
+      "description": "Anomalies detected",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "displayName": "Anomalies Detected",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "super-light-red",
+                "value": 0
+              },
+              {
+                "color": "light-red",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 20
+              },
+              {
+                "color": "semi-dark-red",
+                "value": 30
+              },
+              {
+                "color": "dark-red",
+                "value": 40
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 25
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.1",
+      "targets": [
+        {
+          "dataset": "tablewatch",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "PDABFAD0EE8D6FA21"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(*) AS total_anomalies\r\nFROM player_anomalies\r\nWHERE $__timeFilter(anomaly_detected_at);",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "PDABFAD0EE8D6FA21"
+      },
+      "description": "Uniquely flagged suspicious players",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "displayName": "Unique flagged players",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "super-light-orange",
+                "value": 0
+              },
+              {
+                "color": "light-orange",
+                "value": 10
+              },
+              {
+                "color": "orange",
+                "value": 20
+              },
+              {
+                "color": "semi-dark-orange",
+                "value": 30
+              },
+              {
+                "color": "semi-dark-orange",
+                "value": 40
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 4,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 25
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.1",
+      "targets": [
+        {
+          "dataset": "tablewatch",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(DISTINCT player_id) AS unique_players\r\nFROM player_anomalies\r\nWHERE $__timeFilter(anomaly_detected_at);",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "PDABFAD0EE8D6FA21"
+      },
+      "description": "High confidence alerts where anomaly confidence is greater than 80%",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "displayName": "High-confidence alerts",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "super-light-red",
+                "value": 0
+              },
+              {
+                "color": "light-red",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 20
+              },
+              {
+                "color": "semi-dark-red",
+                "value": 30
+              },
+              {
+                "color": "dark-red",
+                "value": 40
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 8,
+        "y": 0
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 25
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.1",
+      "targets": [
+        {
+          "dataset": "tablewatch",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "PDABFAD0EE8D6FA21"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(*) AS high_confidence\r\nFROM player_anomalies\r\nWHERE anomaly_confidence > 0.8\r\n  AND $__timeFilter(anomaly_detected_at);",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "PDABFAD0EE8D6FA21"
+      },
+      "description": "Average confidence score for anomalies detected",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "displayName": "Average Confidence",
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 40
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "green",
+                "value": 60
+              },
+              {
+                "color": "dark-green",
+                "value": 70
+              },
+              {
+                "color": "dark-green",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 12,
+        "y": 0
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 25
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.1",
+      "targets": [
+        {
+          "dataset": "tablewatch",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT AVG(anomaly_confidence) * 100 AS avg_confidence\r\nFROM player_anomalies\r\nWHERE $__timeFilter(anomaly_detected_at);",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "PDABFAD0EE8D6FA21"
+      },
+      "description": "All-time detection accuracy per anomaly",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 17,
+        "w": 3,
+        "x": 16,
+        "y": 0
+      },
+      "id": 6,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto",
+        "text": {}
+      },
+      "pluginVersion": "12.4.1",
+      "targets": [
+        {
+          "dataset": "tablewatch",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "  SELECT                                                                                                                                                                              \r\n      ROUND(100.0 * COUNT(*) FILTER (WHERE pa.anomaly_type = 'CARD_COUNTING'         AND p.role <> 'casual') / NULLIF(COUNT(*) FILTER (WHERE pa.anomaly_type = 'CARD_COUNTING'), 0),\r\n  2)         AS \"Card Counting\",                                                                                                                                                      \r\n      ROUND(100.0 * COUNT(*) FILTER (WHERE pa.anomaly_type = 'HIGH_BET_SPREAD'        AND p.role <> 'casual') / NULLIF(COUNT(*) FILTER (WHERE pa.anomaly_type = 'HIGH_BET_SPREAD'),   \r\n  0), 2)        AS \"High Bet Spread\",                                                                                                                                                 \r\n      ROUND(100.0 * COUNT(*) FILTER (WHERE pa.anomaly_type = 'WONGING_ENTRY_ANOMALY'  AND p.role <> 'casual') / NULLIF(COUNT(*) FILTER (WHERE pa.anomaly_type =                       \r\n  'WONGING_ENTRY_ANOMALY'), 0), 2)  AS \"Wonging Entry\",                                                                                                        \r\n      ROUND(100.0 * COUNT(*) FILTER (WHERE pa.anomaly_type = 'BET_VELOCITY_SPIKE'     AND p.role <> 'casual') / NULLIF(COUNT(*) FILTER (WHERE pa.anomaly_type = 'BET_VELOCITY_SPIKE'),\r\n   0), 2)     AS \"Bet Velocity Spike\",                                                                                                                                                \r\n      ROUND(100.0 * COUNT(*) FILTER (WHERE pa.anomaly_type = 'IMPOSSIBLE_WIN_RATE'    AND p.role <> 'casual') / NULLIF(COUNT(*) FILTER (WHERE pa.anomaly_type =                       \r\n  'IMPOSSIBLE_WIN_RATE'), 0), 2)    AS \"Impossible Win Rate\"                                                                                                   \r\n  FROM player_anomalies pa                                                                                                                                                            \r\n  LEFT JOIN players p ON pa.player_id = p.player_id         \r\n  WHERE $__timeFilter(pa.anomaly_detected_at)  ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Detection Accuracy",
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "PDABFAD0EE8D6FA21"
+      },
+      "description": "Anomalies detected and categorised by type over all-time",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "dark-purple",
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 17,
+        "w": 5,
+        "x": 19,
+        "y": 0
+      },
+      "id": 5,
+      "options": {
+        "displayLabels": ["percent"],
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "values": ["percent"]
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "sort": "desc",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.1",
+      "targets": [
+        {
+          "dataset": "tablewatch",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": " SELECT\r\n    COUNT(*) FILTER (WHERE anomaly_type = 'CARD_COUNTING')            AS \"Card Counting\",                                                                                             \r\n    COUNT(*) FILTER (WHERE anomaly_type = 'HIGH_BET_SPREAD')          AS \"High Bet Spread\",                                                                                           \r\n    COUNT(*) FILTER (WHERE anomaly_type = 'WONGING_ENTRY_ANOMALY')    AS \"Wonging Entry\",                                                                                             \r\n    COUNT(*) FILTER (WHERE anomaly_type = 'BET_VELOCITY_SPIKE')       AS \"Bet Velocity Spike\",                                                                                        \r\n    COUNT(*) FILTER (WHERE anomaly_type = 'IMPOSSIBLE_WIN_RATE')      AS \"Impossible Win Rate\"                                                                                        \r\n  FROM player_anomalies                                                                                                                                                               \r\n  WHERE $__timeFilter(anomaly_detected_at)  ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Anomalies by Type",
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "PDABFAD0EE8D6FA21"
+      },
+      "description": "Top suspicious players based on anomaly detection and confidence over the past hour.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "pill"
+            },
+            "filterable": true,
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false,
+            "wrapHeaderText": false,
+            "wrapText": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "super-light-green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "highest_confidence"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "role"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 16,
+        "x": 0,
+        "y": 3
+      },
+      "id": 7,
+      "options": {
+        "cellHeight": "sm",
+        "enablePagination": true,
+        "showHeader": true
+      },
+      "pluginVersion": "12.4.1",
+      "targets": [
+        {
+          "dataset": "tablewatch",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\r\n    p.player_name,\r\n    p.role,\r\n    COUNT(a.anomaly_type) AS anomaly_count,\r\n    ROUND(MAX(a.anomaly_confidence) * 100, 2) AS highest_confidence,\r\n    STRING_AGG(DISTINCT a.anomaly_type, ', ') AS anomaly_types\r\nFROM player_anomalies a\r\nJOIN players p ON a.player_id = p.player_id\r\nWHERE $__timeFilter(a.anomaly_detected_at)\r\nGROUP BY p.player_id, p.role\r\nORDER BY highest_confidence DESC;",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Top Suspicious Players",
+      "type": "table"
+    }
+  ],
+  "preload": false,
+  "schemaVersion": 42,
+  "tags": [],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Tablewatch",
+  "uid": "tav7zr2",
+  "version": 28,
+  "weekStart": ""
+}

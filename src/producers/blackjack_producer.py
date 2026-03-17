@@ -44,6 +44,7 @@ class BlackjackProducer:
         self.topic = topic
         self.bet_topic = os.getenv("BET_TOPIC", "bet_events")
         self.outcome_topic = os.getenv("OUTCOME_TOPIC", "outcome_events")
+        self.seat_topic = os.getenv("SEAT_TOPIC", "seat_events")
         self.producer = Producer(
             {
                 "bootstrap.servers": bootstrap_servers,
@@ -73,6 +74,8 @@ class BlackjackProducer:
             return self.bet_topic
         if isinstance(event, OutcomeEvent):
             return self.outcome_topic
+        if isinstance(event, SeatEvent):
+            return self.seat_topic
         return self.topic
 
     def send_event(self, event: Event) -> None:

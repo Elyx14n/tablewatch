@@ -4,3 +4,4 @@ __pycache__/
 *.egg-info/
 seed_data.sql
 .vscode
+*.csv

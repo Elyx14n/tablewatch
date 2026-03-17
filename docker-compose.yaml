@@ -25,11 +25,10 @@ services:
     networks:
       - tablewatch-network
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:29092 --list || exit 1"]
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:29092 > /dev/null 2>&1"]
       interval: 5s
       timeout: 10s
-      retries: 10
-      start_period: 30s
+      retries: 30
 
   kafka-setup:
     image: confluentinc/cp-kafka:7.8.6
@@ -44,6 +43,7 @@ services:
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic blackjack --partitions 8 --replication-factor 1 &&
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic bet_events --partitions 8 --replication-factor 1 &&
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic outcome_events --partitions 8 --replication-factor 1 &&
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic seat_events --partitions 8 --replication-factor 1 &&
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic _schemas --partitions 1 --replication-factor 1 --config cleanup.policy=compact &&
       echo 'Waiting for _schemas leader election...' &&
       until kafka-topics --bootstrap-server kafka:29092 --describe --topic _schemas 2>/dev/null | grep -q 'Leader:'; do sleep 1; done &&
@@ -96,6 +96,8 @@ services:
   timescaledb:
     image: timescale/timescaledb:latest-pg16
     container_name: tablewatch-db
+    ports:
+    - "5432:5432"
     environment:
       - POSTGRES_DB=tablewatch
       - POSTGRES_USER=tablewatch
@@ -275,6 +277,9 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./src/db/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ./src/db/dashboards:/etc/grafana/provisioning/dashboards
+    ports:
+      - "3000:3000"
 
   caddy:
     image: caddy:2-alpine
