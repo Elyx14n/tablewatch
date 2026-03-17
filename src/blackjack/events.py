@@ -36,20 +36,6 @@ class Event(AvroBase):
     model_config = ConfigDict(frozen=True)
 
 
-class PlayerStateEvent(Event):
-    event_type: Literal[EventType.PLAYER_STATE] = EventType.PLAYER_STATE
-    player_id: str
-    team_id: Optional[str] = None
-    bankroll: float
-    net_profit: float
-    total_hands: int
-    hands_won: int
-    hands_lost: int
-    hands_pushed: int
-    total_wagered: float
-    win_rate: float
-
-
 class BetEvent(Event):
     event_type: Literal[EventType.BET] = EventType.BET
     player_id: str

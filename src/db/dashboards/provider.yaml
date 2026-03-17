@@ -4,5 +4,7 @@ providers:
   - name: tablewatch
     type: file
     allowUiUpdates: true
+    updateIntervalSeconds: 10
+    editable: true
     options:
       path: /etc/grafana/provisioning/dashboards

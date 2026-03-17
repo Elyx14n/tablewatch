@@ -225,8 +225,6 @@ services:
         echo 'Cancelling any existing running jobs...' &&
         flink list -r 2>/dev/null | awk '/RUNNING/{print \$4}' | xargs -r -I{} flink cancel {} ;
         flink run --pyModule pipelines.bet_spread --pyFiles /opt/src -d;
-        flink run --pyModule pipelines.win_rate --pyFiles /opt/src -d;
-        flink run --pyModule pipelines.bet_rate_of_change --pyFiles /opt/src -d;
         flink run --pyModule pipelines.wonging --pyFiles /opt/src -d;
         flink run --pyModule pipelines.card_counting --pyFiles /opt/src -d;
         flink run --pyModule pipelines.betting_volatility_correlation --pyFiles /opt/src -d
@@ -261,6 +259,28 @@ services:
         echo 'Starting blackjack game simulator...' &&
         python -m src.main
       "
+    restart: unless-stopped
+    volumes:
+      - ./src:/app/src
+
+  game-event-consumer:
+    image: tablewatch-app:latest
+    pull_policy: never
+    container_name: tablewatch-game-event-consumer
+    env_file:
+      - .env
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - tablewatch-network
+    command: python -m src.consumers.game_event_consumer
     restart: unless-stopped
     volumes:
       - ./src:/app/src

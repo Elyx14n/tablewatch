@@ -1,9 +1,8 @@
 import json
 import psycopg2
 import random
-import multiprocessing
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple
 from blackjack.game import BlackjackGame
 from blackjack.player import Player
@@ -124,6 +123,11 @@ class Setup(BaseSettings):
                 active_players.append(player)
             elif player.role in [PlayerRole.BIG_PLAYER, PlayerRole.BACK_COUNTER]:
                 bench_players.append(player)
+            elif player.role == PlayerRole.ADVANTAGE and random.random() < 0.4:
+                # Advantage players sometimes back-count: watch until shoe is hot
+                player.entry_tc = round(random.uniform(1.0, 2.0), 1)
+                player.exit_tc = round(random.uniform(-1.0, 0.0), 1)
+                bench_players.append(player)
             else:
                 active_players.append(player)
 
@@ -143,15 +147,13 @@ class Setup(BaseSettings):
 
     def spawn_games(self, max_workers: int = 10):
         print(f"Spawning {len(self.tables)} games with {max_workers} workers...")
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             executor.map(self.run_game, self.tables)
         print("All games completed")
 
 
 if __name__ == "__main__":
-    # Windows/macOS requirement for multiprocessing
-    multiprocessing.set_start_method("spawn", force=True)
-    setup = Setup(delay_seconds=0.5)
+    setup = Setup(delay_seconds=0.05)
     setup.load_fixtures()
     while True:
-        setup.spawn_games(max_workers=10)
+        setup.spawn_games(max_workers=100)

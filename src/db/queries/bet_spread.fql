@@ -11,15 +11,18 @@ INSERT INTO
           TABLE bet_events,
           DESCRIPTOR(event_time),
           INTERVAL '5' MINUTES,
-          INTERVAL '15' MINUTES
+          INTERVAL '30' MINUTES
         )
       )
     WHERE
       is_shuffle = FALSE
     GROUP
       BY player_id,
+      table_id,
       window_start,
       window_end
+    HAVING
+      COUNT(*) >= 5
   )
 SELECT
   player_id,
@@ -31,4 +34,4 @@ SELECT
 FROM
   WindowStats
 WHERE
-  current_spread > 8.0;
+  current_spread >= 8.0;

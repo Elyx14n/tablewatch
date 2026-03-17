@@ -65,7 +65,6 @@ CREATE TABLE IF NOT EXISTS player_anomalies (
     anomaly_detected_at TIMESTAMPTZ NOT NULL,
     bet_spread DECIMAL(8, 2),
     z_score DECIMAL(8, 4),
-    win_rate DECIMAL(5, 4),
     bet_change_rate DECIMAL(5, 4),
     wonging_score DECIMAL(3, 2),
     count_corr DECIMAL(8, 4),
@@ -101,6 +100,18 @@ CREATE TABLE IF NOT EXISTS detected_teams (
     player_ids TEXT []
 );
 CREATE INDEX idx_detected_teams_date ON detected_teams(detected_at DESC);
+CREATE TABLE IF NOT EXISTS game_events (
+    event_id TEXT NOT NULL,
+    event_time TIMESTAMPTZ NOT NULL,
+    table_id TEXT NOT NULL,
+    round_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    player_id TEXT,
+    summary TEXT,
+    PRIMARY KEY (event_id, event_time)
+);
+SELECT create_hypertable('game_events', 'event_time', if_not_exists => TRUE);
+CREATE INDEX idx_game_events_table_time ON game_events(table_id, event_time DESC);
 CREATE INDEX IF NOT EXISTS idx_anomalies_player ON player_anomalies(player_id, anomaly_detected_at DESC);
 CREATE INDEX IF NOT EXISTS idx_anomalies_type ON player_anomalies(anomaly_type, anomaly_detected_at DESC);
 CREATE INDEX IF NOT EXISTS idx_anomalies_confidence ON player_anomalies(anomaly_confidence DESC)

@@ -16,7 +16,6 @@ from blackjack.events import (
     CardDealtEvent,
     RoundStartEvent,
     RoundEndEvent,
-    PlayerStateEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,7 +29,6 @@ EVENTS = (
     CardDealtEvent,
     RoundStartEvent,
     RoundEndEvent,
-    PlayerStateEvent,
 )
 
 

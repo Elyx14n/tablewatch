@@ -18,7 +18,6 @@ from .events import (
     ActionEvent,
     SeatEvent,
     UnseatEvent,
-    PlayerStateEvent,
     CardDealtEvent,
     Result,
     RoundStartEvent,
@@ -321,6 +320,11 @@ class BlackjackGame:
                 card, self.dealer.hand, "DEALER", "HOUSE", h_idx=0, hidden=False
             )
 
+    def _cleanup_round(self):
+        for player in self.players:
+            player.clear_hands()
+        self.dealer.clear_hand()
+
     def _resolve_dealer_blackjack(self, hand_id: str):
         for player in self.players:
             for hand_idx, hand in enumerate(player.hands):
@@ -385,22 +389,6 @@ class BlackjackGame:
                     bankroll_after=player.bankroll,
                 )
 
-    def _cleanup_round(self):
-        for player in self.players:
-            player.clear_hands()
-            self._add_event(
-                PlayerStateEvent,
-                player_id=player.player_id,
-                team_id=player.team_id,
-                bankroll=player.bankroll,
-                net_profit=player.net_profit,
-                total_hands=player.total_hands,
-                hands_won=player.hands_won,
-                hands_lost=player.hands_lost,
-                hands_pushed=player.hands_pushed,
-                total_wagered=player.total_wagered,
-                win_rate=player.win_rate,
-            )
         self.dealer.clear_hand()
         if self.delay > 0:
             time.sleep(self.delay * 3)
@@ -432,19 +420,6 @@ class BlackjackGame:
                     true_count=true_count,
                     cards_remaining=self.shoe.cards_remaining,
                 )
-                self._add_event(
-                    PlayerStateEvent,
-                    player_id=player.player_id,
-                    team_id=player.team_id,
-                    bankroll=player.bankroll,
-                    net_profit=player.net_profit,
-                    total_hands=player.total_hands,
-                    hands_won=player.hands_won,
-                    hands_lost=player.hands_lost,
-                    hands_pushed=player.hands_pushed,
-                    total_wagered=player.total_wagered,
-                    win_rate=player.win_rate,
-                )
 
         exiting = []
         for player in self.players[:]:
@@ -460,38 +435,12 @@ class BlackjackGame:
                     true_count=true_count,
                     cards_remaining=self.shoe.cards_remaining,
                 )
-                self._add_event(
-                    PlayerStateEvent,
-                    player_id=player.player_id,
-                    team_id=player.team_id,
-                    bankroll=player.bankroll,
-                    net_profit=player.net_profit,
-                    total_hands=player.total_hands,
-                    hands_won=player.hands_won,
-                    hands_lost=player.hands_lost,
-                    hands_pushed=player.hands_pushed,
-                    total_wagered=player.total_wagered,
-                    win_rate=player.win_rate,
-                )
 
     def _remove_quit_players(self):
         all_players = self.players + self.bench
 
         for player in all_players[:]:
             if player.should_quit_individual() or not player.can_bet:
-                self._add_event(
-                    PlayerStateEvent,
-                    player_id=player.player_id,
-                    team_id=player.team_id,
-                    bankroll=player.bankroll,
-                    net_profit=player.net_profit,
-                    total_hands=player.total_hands,
-                    hands_won=player.hands_won,
-                    hands_lost=player.hands_lost,
-                    hands_pushed=player.hands_pushed,
-                    total_wagered=player.total_wagered,
-                    win_rate=player.win_rate,
-                )
                 if player in self.players:
                     self.players.remove(player)
                 if player in self.bench:

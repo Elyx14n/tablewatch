@@ -23,10 +23,11 @@ INSERT INTO
       is_shuffle = FALSE
     GROUP
       BY player_id,
+      table_id,
       window_start,
       window_end
     HAVING
-      COUNT(*) >= 10
+      COUNT(*) >= 20
   )
 SELECT
   player_id,
