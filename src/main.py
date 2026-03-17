@@ -124,7 +124,6 @@ class Setup(BaseSettings):
             elif player.role in [PlayerRole.BIG_PLAYER, PlayerRole.BACK_COUNTER]:
                 bench_players.append(player)
             elif player.role == PlayerRole.ADVANTAGE and random.random() < 0.4:
-                # Advantage players sometimes back-count: watch until shoe is hot
                 player.entry_tc = round(random.uniform(1.0, 2.0), 1)
                 player.exit_tc = round(random.uniform(-1.0, 0.0), 1)
                 bench_players.append(player)
@@ -156,4 +155,4 @@ if __name__ == "__main__":
     setup = Setup(delay_seconds=0.05)
     setup.load_fixtures()
     while True:
-        setup.spawn_games(max_workers=100)
+        setup.spawn_games(max_workers=50)

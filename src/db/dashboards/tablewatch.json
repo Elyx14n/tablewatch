@@ -514,7 +514,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "PDABFAD0EE8D6FA21"
       },
-      "description": "Top suspicious players based on anomaly detection and confidence over the past hour.",
+      "description": "Near-live game event feed for the selected table. Shows bets, cards, actions, and outcomes as they are processed.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -525,20 +525,18 @@
             "cellOptions": {
               "type": "pill"
             },
-            "filterable": true,
+            "filterable": false,
             "footer": {
               "reducers": []
             },
-            "inspect": false,
-            "wrapHeaderText": false,
-            "wrapText": false
+            "inspect": false
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "super-light-green",
+                "color": "green",
                 "value": 0
               }
             ]
@@ -548,24 +546,86 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "highest_confidence"
+              "options": "Time"
             },
             "properties": [
               {
-                "id": "unit",
-                "value": "percent"
+                "id": "custom.width",
+                "value": 189
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "role"
+              "options": "Event"
             },
             "properties": [
               {
                 "id": "custom.width",
-                "value": 150
+                "value": 115
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "ACTION": {
+                        "color": "light-blue",
+                        "index": 4,
+                        "text": "ACTION"
+                      },
+                      "BET": {
+                        "color": "orange",
+                        "index": 2,
+                        "text": "BET"
+                      },
+                      "CARD": {
+                        "color": "gray",
+                        "index": 3,
+                        "text": "CARD"
+                      },
+                      "OUTCOME": {
+                        "color": "green",
+                        "index": 5,
+                        "text": "OUTCOME"
+                      },
+                      "ROUND END": {
+                        "color": "semi-dark-blue",
+                        "index": 1,
+                        "text": "ROUND END"
+                      },
+                      "ROUND START": {
+                        "color": "blue",
+                        "index": 0,
+                        "text": "ROUND START"
+                      },
+                      "WONGED IN": {
+                        "color": "purple",
+                        "index": 6,
+                        "text": "WONGED IN"
+                      },
+                      "WONGED OUT": {
+                        "color": "semi-dark-purple",
+                        "index": 7,
+                        "text": "WONGED OUT"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Player"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 160
               }
             ]
           }
@@ -577,20 +637,25 @@
         "x": 0,
         "y": 3
       },
-      "id": 7,
+      "id": 8,
       "options": {
         "cellHeight": "sm",
         "enablePagination": true,
-        "showHeader": true
+        "showHeader": true,
+        "sortBy": []
       },
       "pluginVersion": "12.4.1",
       "targets": [
         {
           "dataset": "tablewatch",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "PDABFAD0EE8D6FA21"
+          },
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\r\n    p.player_name,\r\n    p.role,\r\n    COUNT(a.anomaly_type) AS anomaly_count,\r\n    ROUND(MAX(a.anomaly_confidence) * 100, 2) AS highest_confidence,\r\n    STRING_AGG(DISTINCT a.anomaly_type, ', ') AS anomaly_types\r\nFROM player_anomalies a\r\nJOIN players p ON a.player_id = p.player_id\r\nWHERE $__timeFilter(a.anomaly_detected_at)\r\nGROUP BY p.player_id, p.role\r\nORDER BY highest_confidence DESC;",
+          "rawSql": "SELECT\r\n  ge.event_time AS \"Time\",\r\n  ge.event_type AS \"Event\",\r\n  CASE\r\n    WHEN ge.player_id IS NULL THEN ''\r\n    WHEN ge.player_id = 'HOUSE' THEN 'DEALER'\r\n    ELSE COALESCE(p.player_name, ge.player_id)\r\n  END AS \"Player\",\r\n  ge.summary AS \"Details\"\r\nFROM game_events ge\r\nLEFT JOIN players p ON ge.player_id = p.player_id\r\nWHERE ge.table_id = '${table_id}'\r\n  AND $__timeFilter(ge.event_time)\r\nORDER BY ge.event_time DESC",
           "refId": "A",
           "sql": {
             "columns": [
@@ -611,7 +676,7 @@
           }
         }
       ],
-      "title": "Top Suspicious Players",
+      "title": "Live Game Feed — ${table_id}",
       "type": "table"
     },
     {
@@ -701,7 +766,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "PDABFAD0EE8D6FA21"
       },
-      "description": "Near-live game event feed for the selected table. Shows bets, cards, actions, and outcomes as they are processed.",
+      "description": "Priority queue that suggests players to blacklist immediately based on a composite threat_score computed by maximum detected anomaly confidence and greatest net profit",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -712,7 +777,6 @@
             "cellOptions": {
               "type": "pill"
             },
-            "filterable": false,
             "footer": {
               "reducers": []
             },
@@ -725,6 +789,10 @@
               {
                 "color": "green",
                 "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
               }
             ]
           }
@@ -733,116 +801,67 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Time"
+              "options": "net_profit"
             },
             "properties": [
               {
-                "id": "custom.width",
-                "value": 175
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Event"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 115
+                "id": "unit",
+                "value": "currencyUSD"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "options": {
-                      "ACTION": {
-                        "color": "light-blue",
-                        "index": 4,
-                        "text": "ACTION"
-                      },
-                      "BET": {
-                        "color": "orange",
-                        "index": 2,
-                        "text": "BET"
-                      },
-                      "CARD": {
-                        "color": "gray",
-                        "index": 3,
-                        "text": "CARD"
-                      },
-                      "OUTCOME": {
-                        "color": "green",
-                        "index": 5,
-                        "text": "OUTCOME"
-                      },
-                      "ROUND END": {
-                        "color": "semi-dark-blue",
-                        "index": 1,
-                        "text": "ROUND END"
-                      },
-                      "ROUND START": {
-                        "color": "blue",
-                        "index": 0,
-                        "text": "ROUND START"
-                      },
-                      "WONGED IN": {
-                        "color": "purple",
-                        "index": 6,
-                        "text": "WONGED IN"
-                      },
-                      "WONGED OUT": {
-                        "color": "semi-dark-purple",
-                        "index": 7,
-                        "text": "WONGED OUT"
-                      }
-                    },
-                    "type": "value"
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "continuous-RdYlGr"
+                }
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "Player"
+              "options": "highest_confidence"
             },
             "properties": [
               {
-                "id": "custom.width",
-                "value": 160
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "threat_score"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": ""
               }
             ]
           }
         ]
       },
       "gridPos": {
-        "h": 16,
+        "h": 14,
         "w": 24,
         "x": 0,
         "y": 17
       },
-      "id": 8,
+      "id": 9,
       "options": {
         "cellHeight": "sm",
-        "enablePagination": false,
-        "showHeader": true,
-        "sortBy": []
+        "enablePagination": true,
+        "showHeader": true
       },
       "pluginVersion": "12.4.1",
       "targets": [
         {
           "dataset": "tablewatch",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "PDABFAD0EE8D6FA21"
-          },
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\r\n  ge.event_time AS \"Time\",\r\n  ge.event_type AS \"Event\",\r\n  CASE\r\n    WHEN ge.player_id IS NULL THEN ''\r\n    WHEN ge.player_id = 'HOUSE' THEN 'DEALER'\r\n    ELSE COALESCE(p.player_name, ge.player_id)\r\n  END AS \"Player\",\r\n  ge.summary AS \"Details\"\r\nFROM game_events ge\r\nLEFT JOIN players p ON ge.player_id = p.player_id\r\nWHERE ge.table_id = '${table_id}'\r\n  AND $__timeFilter(ge.event_time)\r\nORDER BY ge.event_time DESC\r\nLIMIT 200",
+          "rawSql": "WITH latest_player_state AS (\r\n\tSELECT DISTINCT ON (player_id) player_id,\r\n\t\ttable_id,\r\n\t\tbankroll_after\r\n\tFROM game_events\r\n\tORDER BY player_id,\r\n\t\tevent_time DESC\r\n)\r\nSELECT p.player_name,\r\n\tstate.table_id AS current_table,\r\n\tSTRING_AGG(DISTINCT pa.anomaly_type, ', ') AS anomaly_types,\r\n\tCOUNT(*) AS anomaly_count,\r\n\tMAX(pa.anomaly_confidence) AS highest_confidence,\r\n\tROUND(state.bankroll_after - p.initial_bankroll, 2) AS net_profit,\r\n\tROUND(\r\n\t\tCAST(\r\n\t\t\tLOG(\r\n\t\t\t\t10,\r\n\t\t\t\tGREATEST(\r\n\t\t\t\t\tMAX(pa.anomaly_confidence) * COUNT(*) * GREATEST(state.bankroll_after - p.initial_bankroll, 0),\r\n\t\t\t\t\t1\r\n\t\t\t\t)\r\n\t\t\t) AS numeric\r\n\t\t),\r\n\t\t2\r\n\t) AS threat_score\r\nFROM player_anomalies pa\r\n\tJOIN players p ON pa.player_id = p.player_id\r\n\tLEFT JOIN latest_player_state state ON pa.player_id = state.player_id\r\nWHERE $__timeFilter(pa.anomaly_detected_at)\r\nGROUP BY p.player_id,\r\n\tp.player_name,\r\n\tp.initial_bankroll,\r\n\tstate.table_id,\r\n\tstate.bankroll_after\r\nORDER BY threat_score DESC",
           "refId": "A",
           "sql": {
             "columns": [
@@ -863,7 +882,101 @@
           }
         }
       ],
-      "title": "Live Game Feed — ${table_id}",
+      "title": "Priority Blacklist Queue",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "PDABFAD0EE8D6FA21"
+      },
+      "description": "Table profiling teams scored based on players engaging in team-related behaviours (wonging, card_counting) and seen often at the same table.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "pill"
+            },
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "team_correlation"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "id": 10,
+      "options": {
+        "cellHeight": "sm",
+        "enablePagination": true,
+        "showHeader": true
+      },
+      "pluginVersion": "12.4.1",
+      "targets": [
+        {
+          "dataset": "tablewatch",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH team_membership AS (\r\n\tSELECT dt.detected_team_id,\r\n\t\tCOUNT(DISTINCT p.team_id) = 1 AS is_actual_team\r\n\tFROM detected_teams dt\r\n\t\tJOIN LATERAL unnest(dt.player_ids) AS pid ON true\r\n\t\tJOIN players p ON p.player_id = pid\r\n\tWHERE p.team_id IS NOT NULL\r\n\tGROUP BY dt.detected_team_id\r\n)\r\nSELECT dt.team_name,\r\n\ttm.is_actual_team,\r\n\tmember_count,\r\n\tteam_correlation,\r\n\tarray_to_string(player_ids, ', ') AS members\r\nFROM detected_teams dt\r\n\tJOIN team_membership tm ON dt.detected_team_id = tm.detected_team_id\r\nWHERE $__timeFilter(dt.detected_at)",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Detected Teams",
       "type": "table"
     }
   ],
@@ -875,8 +988,8 @@
     "list": [
       {
         "current": {
-          "text": "TABLE_001",
-          "value": "TABLE_001"
+          "text": "TABLE_009",
+          "value": "TABLE_009"
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -904,6 +1017,6 @@
   "timezone": "browser",
   "title": "Tablewatch",
   "uid": "tav7zr2",
-  "version": 8,
+  "version": 16,
   "weekStart": ""
 }

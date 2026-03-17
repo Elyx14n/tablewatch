@@ -64,10 +64,9 @@ class BlackjackGame:
     def shutdown(self) -> None:
         self.shutdown_requested = True
 
-    def run(self) -> List[Event]:
+    def run(self) -> None:
         try:
             round_num = 1
-            all_events = []
             while self.has_active_players() and not self.shutdown_requested:
                 self.events.clear()
                 self._add_event(
@@ -80,9 +79,7 @@ class BlackjackGame:
                     RoundEndEvent,
                     round_number=round_num,
                 )
-                all_events.extend(self.events)
                 round_num += 1
-            return all_events
         except Exception:
             logger.exception("Blacjack simulation run failed")
             raise

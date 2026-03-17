@@ -10,7 +10,7 @@ _SUBJECT_TOPIC = {
     "SeatEvent": SEAT_TOPIC,
 }
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 
 
 class Stream(ABC):
@@ -77,27 +77,6 @@ class Stream(ABC):
         """
         )
 
-    def create_outcome_events_source(self, conn_config):
-        assert self.table_env is not None
-        self.table_env.execute_sql(
-            f"""
-            CREATE TABLE outcome_events (
-                event_id STRING NOT NULL,
-                `timestamp` BIGINT NOT NULL,
-                table_id STRING NOT NULL,
-                round_id STRING NOT NULL,
-                player_id STRING NOT NULL,
-                `result` STRING NOT NULL,
-                payout DOUBLE NOT NULL,
-                player_hand_value BIGINT,
-                dealer_upcard_value BIGINT,
-                bankroll_after DOUBLE NOT NULL,
-                event_time AS TO_TIMESTAMP(FROM_UNIXTIME(`timestamp` / 1000000)),
-                WATERMARK FOR event_time AS event_time - INTERVAL '5' SECOND
-            ) WITH ({conn_config})
-        """
-        )
-
     def create_anomaly_sink(self, schema_fields: str):
         assert self.table_env is not None
         self.table_env.execute_sql(
@@ -142,7 +121,7 @@ class Stream(ABC):
 
     def load_sql_query(self) -> str:
         filename = self.get_query_filename()
-        sql_path = ROOT.parent / "db" / "queries" / filename
+        sql_path = ROOT / "db" / "queries" / filename
         return sql_path.read_text()
 
     def create_kafka_conn(self, group_id, subject, extra_fields = "") -> str:

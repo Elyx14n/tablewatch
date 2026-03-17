@@ -36,7 +36,7 @@ EVENT_TYPE_LABELS = {
 }
 
 INSERT_SQL = """
-INSERT INTO game_events (event_id, event_time, table_id, round_id, event_type, player_id, summary)
+INSERT INTO game_events (event_id, event_time, table_id, round_id, event_type, player_id, summary, bankroll_after)
 VALUES %s
 ON CONFLICT (event_id, event_time) DO NOTHING
 """
@@ -76,7 +76,7 @@ def _format_summary(event: dict) -> str:
     if etype == "bet":
         return (
             f"Bet ${event.get('bet_amount', 0):.0f}"
-            f"  (bankroll: ${event.get('bankroll_after', 0):,.0f})"
+            f"  (bankroll: ${event.get('bankroll_after', 0):.0f})"
         )
     if etype == "card_dealt":
         rank = event.get("card_rank", "?")
@@ -172,6 +172,7 @@ def run():
                         EVENT_TYPE_LABELS.get(etype, etype.upper()),
                         _get_player_id(event),
                         _format_summary(event),
+                        event.get("bankroll_after") if etype == "bet" else None,
                     ))
                 except Exception as e:
                     logger.warning(f"Failed to process message: {e}")
