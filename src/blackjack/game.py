@@ -470,7 +470,7 @@ class BlackjackGame:
     ):
         self.count.update(card)
         hand.add_card(card)
-        event = self._add_event(
+        self._add_event(
             CardDealtEvent,
             recipient_type=recipient,
             recipient_id=r_id,
@@ -482,6 +482,5 @@ class BlackjackGame:
             true_count=self.count.get_true_count(self.shoe.decks_remaining),
             cards_remaining=self.shoe.cards_remaining,
         )
-        self.producer.send_event(event)
         if self.delay > 0:
             time.sleep(self.delay)

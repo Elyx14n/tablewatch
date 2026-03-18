@@ -18,9 +18,9 @@ ps:
 topics:
 	docker exec tablewatch-kafka kafka-topics --bootstrap-server localhost:9092 --list
 
-# Describe blackjack topic
+# Describe topics
 describe:
-	docker exec tablewatch-kafka kafka-topics --bootstrap-server localhost:9092 --describe --topic blackjack
+	docker exec tablewatch-kafka kafka-topics --bootstrap-server localhost:9092 --describe
 
 # Run the game simulation
 run:
