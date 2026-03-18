@@ -933,6 +933,18 @@
                 "value": "percentunit"
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "team_detection_accuracy"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
           }
         ]
       },
@@ -955,7 +967,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT team_name,\r\n\tteam_detection_accuracy,\r\n\tmember_count,\r\n\tteam_correlation,\r\n\tarray_to_string(actual_team_ids, ', ') AS actual_team_ids,\r\n\tarray_to_string(actual_team_names, ', ') AS actual_team_names,\r\n\tarray_to_string(player_ids, ', ') AS members\r\nFROM detected_teams\r\nWHERE $__timeFilter(detected_at)",
+          "rawSql": "SELECT team_detection_accuracy,\r\n\tmember_count,\r\n\tteam_correlation,\r\n\tarray_to_string(actual_team_names, ', ') AS actual_team_names,\r\n\tarray_to_string(player_ids, ', ') AS members\r\nFROM detected_teams\r\nWHERE $__timeFilter(detected_at)",
           "refId": "A",
           "sql": {
             "columns": [

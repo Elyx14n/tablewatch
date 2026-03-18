@@ -219,6 +219,8 @@ Individual anomaly detection catches card counters and wongers in isolation, but
 
 Because bet correlation between team members is unreliable (spotters bet flat, making their variance zero and Pearson correlation undefined), team detection instead uses **table co-presence of already-flagged players** as its signal. If two players have both been independently flagged for card counting or wonging, and they shared the same table in the same round on 10 or more occasions within the last 2 hours, they are clustered into a team. The cluster root is the lexicographically smallest player ID among all correlated pairs, ensuring each real-world team produces one stable row rather than one per pair.
 
+The algorithm however habitually groups both individual advantage players and teams together due to both discretely being flagged for Wonging and Card Counting behaviours, therefore the field team_detection_accuracy is computed based on the fraction of detected members as actual seeded team players.
+
 - Runs as a periodic Postgres job every 30 minutes rather than a Flink streaming job, since its inputs are already-computed anomalies in the database rather than raw Kafka events
 - `team_correlation` is a proxy score derived from average shared rounds (normalised to 50 rounds = 1.0) rather than a true statistical correlation, since the actual signal here is co-occurrence frequency
 - `ON CONFLICT DO UPDATE` ensures the team record is refreshed each run rather than duplicated
@@ -230,10 +232,14 @@ INSERT INTO detected_teams (
         detected_team_id,
         member_count,
         team_correlation,
+        team_detection_accuracy,
+        actual_team_ids,
+        actual_team_names,
         detected_at,
         team_name,
         player_ids
-    ) WITH flagged AS (
+    )
+WITH flagged AS (
         -- Step 1: collect all players flagged for counting or wonging in the last 2 hours
         SELECT DISTINCT player_id
         FROM player_anomalies
@@ -256,20 +262,52 @@ INSERT INTO detected_teams (
             AND g1.event_time >= NOW() - INTERVAL '2 hours'
         GROUP BY 1, 2
         HAVING COUNT(DISTINCT g1.round_id) >= 10  -- minimum 10 shared rounds to filter coincidental co-presence
+    ),
+    clusters AS (
+        -- Step 3: group pairs by their cluster root (player_1) to form multi-member teams
+        SELECT 'TEAM_' || player_1 AS detected_team_id,
+            COUNT(DISTINCT player_2) + 1 AS member_count,                          -- +1 to include the root player
+            LEAST(ROUND(AVG(shared_rounds) / 50.0, 2), 1.0) AS team_correlation,  -- co-presence score: 50 shared rounds = 1.0
+            NOW() AS detected_at,
+            'AP_CLUSTER_' || player_1 AS team_name,
+            ARRAY [player_1] || ARRAY_AGG(DISTINCT player_2) AS player_ids         -- full member list including root
+        FROM shared_tables
+        GROUP BY player_1
+    ),
+    accuracy AS (
+        -- Step 4: for each cluster, compute what fraction of detected members are actual seeded team players
+        -- and collect the real team ids/names for display
+        SELECT c.detected_team_id,
+            ROUND(
+                COUNT(p.player_id) FILTER (WHERE p.team_id IS NOT NULL)::DECIMAL
+                / NULLIF(ARRAY_LENGTH(c.player_ids, 1), 0),
+                4
+            ) AS team_detection_accuracy,                                           -- 0.0–1.0: real team members / cluster size
+            ARRAY_AGG(DISTINCT p.team_id)   FILTER (WHERE p.team_id IS NOT NULL) AS actual_team_ids,
+            ARRAY_AGG(DISTINCT p.team_name) FILTER (WHERE p.team_name IS NOT NULL) AS actual_team_names
+        FROM clusters c
+            JOIN LATERAL unnest(c.player_ids) AS pid ON true  -- expand player_ids array into one row per member
+            LEFT JOIN players p ON p.player_id = pid          -- left join so solo advantage players produce NULL team_id
+        GROUP BY c.detected_team_id, c.player_ids
     )
--- Step 3: group pairs by their cluster root (player_1) to form multi-member teams
-SELECT 'TEAM_' || player_1 AS detected_team_id,
-    COUNT(DISTINCT player_2) + 1 AS member_count,                          -- +1 to include the root player
-    LEAST(ROUND(AVG(shared_rounds) / 50.0, 2), 1.0) AS team_correlation,  -- co-presence score: 50 shared rounds = 1.0
-    NOW() AS detected_at,
-    'AP_CLUSTER_' || player_1 AS team_name,
-    ARRAY [player_1] || ARRAY_AGG(DISTINCT player_2) AS player_ids         -- full member list including root
-FROM shared_tables
-GROUP BY player_1 ON CONFLICT (detected_team_id) DO
+SELECT c.detected_team_id,
+    c.member_count,
+    c.team_correlation,
+    a.team_detection_accuracy,
+    a.actual_team_ids,
+    a.actual_team_names,
+    c.detected_at,
+    c.team_name,
+    c.player_ids
+FROM clusters c
+JOIN accuracy a ON c.detected_team_id = a.detected_team_id
 -- Refresh existing team records rather than inserting duplicates
-UPDATE
+ON CONFLICT (detected_team_id) DO UPDATE
 SET member_count = EXCLUDED.member_count,
     team_correlation = EXCLUDED.team_correlation,
+    team_detection_accuracy = EXCLUDED.team_detection_accuracy,
+    actual_team_ids = EXCLUDED.actual_team_ids,
+    actual_team_names = EXCLUDED.actual_team_names,
     detected_at = EXCLUDED.detected_at,
     player_ids = EXCLUDED.player_ids
 ```
@@ -422,7 +460,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## References
 
-- Z-score detection for unsupervised learning-based anomaly detection [Detect Z-score anomalies with Tinybird
+- Z-score example SQL implementation for unsupervised learning-based anomaly detection [Detect Z-score anomalies with Tinybird
 ](https://github.com/tinybirdco/use-case-real-time-anomaly-detection/blob/main/tutorials/z-score.md)
 - EcZachly's setup for PyFlink, Kafka, and build scripts [intermediate-bootcamp-4-apache-flink-training](https://github.com/DataExpert-io/data-engineer-handbook/tree/main/intermediate-bootcamp/materials/4-apache-flink-training)
 - Role descriptions and configs based on MIT Blackjack Team's real life strategies [MIT Blackjack Team](https://en.wikipedia.org/wiki/MIT_Blackjack_Team)
