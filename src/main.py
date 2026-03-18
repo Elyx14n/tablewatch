@@ -20,7 +20,6 @@ ROOT = Path(__file__).resolve().parent
 class Setup(BaseSettings):
     db_host: str = ""
     db_port: int = 5432
-
     db_name: str = ""
     db_user: str = ""
     db_password: str = ""
@@ -115,11 +114,36 @@ class Setup(BaseSettings):
         table_id, table_min, table_max, num_decks, penetration = table_row
         num_players = random.randint(2, 7)
 
-        if len(self.players) < num_players:
+        team_groups: dict[str, list] = {}
+        solo_players: list = []
+        for player_row in self.players:
+            tid = player_row[2]
+            if tid:
+                team_groups.setdefault(tid, []).append(player_row)
+            else:
+                solo_players.append(player_row)
+
+        assigned_player_rows = []
+        remaining = num_players
+
+        teams = list(team_groups.values())
+        random.shuffle(teams)
+        for team in teams:
+            if len(team) <= remaining:
+                assigned_player_rows.extend(team)
+                remaining -= len(team)
+            if remaining == 0:
+                break
+
+        if remaining > 0 and solo_players:
+            assigned_player_rows.extend(
+                random.sample(solo_players, min(remaining, len(solo_players)))
+            )
+
+        if not assigned_player_rows:
             print(f"Warning: Not enough active players for {table_id}")
             return
 
-        assigned_player_rows = random.sample(self.players, num_players)
         active_players, bench_players = [], []
 
         for player_row in assigned_player_rows:
@@ -136,6 +160,7 @@ class Setup(BaseSettings):
                 active_players.append(player)
 
         rules = HouseRules()
+        assert self.producer is not None
         game = BlackjackGame(
             table_id=table_id,
             players=active_players,
@@ -154,6 +179,7 @@ class Setup(BaseSettings):
         print(f"Spawning {len(self.tables)} games with {max_workers} workers...")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             executor.map(self.run_game, self.tables)
+        assert self.producer is not None
         self.producer.flush()
         print("All games completed")
 

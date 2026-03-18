@@ -80,6 +80,9 @@ CREATE TABLE IF NOT EXISTS detected_teams (
   detected_team_id TEXT PRIMARY KEY,
   member_count INT,
   team_correlation DECIMAL(3, 2),
+  team_detection_accuracy DECIMAL(5, 4),
+  actual_team_ids TEXT [],
+  actual_team_names TEXT [],
   detected_at TIMESTAMPTZ DEFAULT NOW(),
   team_name TEXT,
   player_ids TEXT [ ]

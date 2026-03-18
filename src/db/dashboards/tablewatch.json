@@ -955,7 +955,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "WITH team_membership AS (\r\n\tSELECT dt.detected_team_id,\r\n\t\tCOUNT(DISTINCT p.team_id) = 1 AS is_actual_team\r\n\tFROM detected_teams dt\r\n\t\tJOIN LATERAL unnest(dt.player_ids) AS pid ON true\r\n\t\tJOIN players p ON p.player_id = pid\r\n\tWHERE p.team_id IS NOT NULL\r\n\tGROUP BY dt.detected_team_id\r\n)\r\nSELECT dt.team_name,\r\n\ttm.is_actual_team,\r\n\tmember_count,\r\n\tteam_correlation,\r\n\tarray_to_string(player_ids, ', ') AS members\r\nFROM detected_teams dt\r\n\tJOIN team_membership tm ON dt.detected_team_id = tm.detected_team_id\r\nWHERE $__timeFilter(dt.detected_at)",
+          "rawSql": "SELECT team_name,\r\n\tteam_detection_accuracy,\r\n\tmember_count,\r\n\tteam_correlation,\r\n\tarray_to_string(actual_team_ids, ', ') AS actual_team_ids,\r\n\tarray_to_string(actual_team_names, ', ') AS actual_team_names,\r\n\tarray_to_string(player_ids, ', ') AS members\r\nFROM detected_teams\r\nWHERE $__timeFilter(detected_at)",
           "refId": "A",
           "sql": {
             "columns": [

@@ -50,6 +50,7 @@ class BlackjackProducer:
                 "linger.ms": 10,
                 "compression.type": "snappy",
                 "batch.size": 16384,
+                "queue.buffering.max.messages": 500000,
             }
         )
         self.schema_client = SchemaRegistryClient({"url": schema_registry_url})
@@ -103,12 +104,17 @@ class BlackjackProducer:
             event_dict, SerializationContext(topic, MessageField.VALUE)
         )
 
-        self.producer.produce(
-            topic=topic,
-            key=key_bytes,
-            value=value_bytes,
-            on_delivery=lambda err, msg: print(f"Error: {err}") if err else None,
-        )
+        while True:
+            try:
+                self.producer.produce(
+                    topic=topic,
+                    key=key_bytes,
+                    value=value_bytes,
+                    on_delivery=lambda err, msg: print(f"Error: {err}") if err else None,
+                )
+                break
+            except BufferError:
+                self.producer.poll(0.1)  # drain delivery callbacks to free queue space
 
     def send_events(self, events: List[Event]) -> None:
         for event in events:
