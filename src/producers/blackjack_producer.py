@@ -54,7 +54,14 @@ class BlackjackProducer:
         )
         self.schema_client = SchemaRegistryClient({"url": schema_registry_url})
         self.key_serializer = StringSerializer("utf-8")
-        self._serializers: Dict[type, AvroSerializer] = {}
+        self._serializers: Dict[type, AvroSerializer] = {
+            event_type: AvroSerializer(
+                self.schema_client,
+                json.dumps(event_type.avro_schema(namespace="com.tablewatch.blackjack")),
+                conf={"subject.name.strategy": topic_record_subject_name_strategy},
+            )
+            for event_type in EVENTS
+        }
 
     def _get_serializer(self, event_type: type) -> AvroSerializer:
         if event_type not in self._serializers:
@@ -108,8 +115,11 @@ class BlackjackProducer:
             self.send_event(event)
         self.producer.poll(0)  # Trigger callbacks without blocking
 
-    def close(self) -> None:
+    def flush(self) -> None:
         self.producer.flush(timeout=30)
+
+    def close(self) -> None:
+        self.flush()
 
     def __enter__(self):
         return self

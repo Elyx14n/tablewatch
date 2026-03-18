@@ -274,6 +274,46 @@ SET member_count = EXCLUDED.member_count,
     player_ids = EXCLUDED.player_ids
 ```
 
+## Performance
+
+### Benchmarks
+
+The theoretical maximum events generated per second with a default processing delay of 0.05s per event can be calculated as follows:
+
+- Card deals: 7 players (max) × 2 + 2 (dealer) + ~4 hits = ~22 cards × 0.05s = 1.1s
+- Actions ~10 actions x 0.1s (delay x 2) = 1.0s
+- Resolve: 0.15s
+- Shuffle amortised: 0.4s every ~12 rounds = 0.03s
+- ~2.3s per round per table
+
+Events per round per table:
+
+| Topic | Events |
+|:---|:---:|
+| blackjack | ~45 (all event types) |
+| bet_events | 7 |
+| seat_events | ~0.1 |
+| outcome_events | 7 |
+| Total | ~59 messages |
+
+With 1000 concurrent workers for 1000 tables:
+
+- 1000 tables ÷ 2.3s = ~435 rounds/sec
+- 435 × 59 = ~25665 Kafka messages/sec
+
+### Limitations
+
+Due to hardware limitations in my setup only having 16GB RAM and the following WSL config:
+> ```ini
+> [wsl2]
+> memory=10GB
+> processors=4
+> swap=4GB
+> ```
+I could only effectively generate roughly ~1150 events/s using 50 max_workers instead of 1000. The sustained load combined from other microservices totaled ~8.5 GB RAM usage after prolonged WSL2 cache bloat and Windows 11 related performance quirks.
+
+In theory however, the system designed could scale up to millions of events per/second as is with any reasonably optimised Kafka + Flink real-time streaming setup.
+
 ## Installation
 
 ### Prerequisites

@@ -1,13 +1,15 @@
 import json
+import os
 import psycopg2
 import random
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from blackjack.game import BlackjackGame
 from blackjack.player import Player
 from blackjack.house import HouseRules
 from blackjack.strategy import Strategy, PlayerRole
+from producers.blackjack_producer import BlackjackProducer
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -18,6 +20,7 @@ ROOT = Path(__file__).resolve().parent
 class Setup(BaseSettings):
     db_host: str = ""
     db_port: int = 5432
+
     db_name: str = ""
     db_user: str = ""
     db_password: str = ""
@@ -25,11 +28,13 @@ class Setup(BaseSettings):
     queries_dir: Path = Field(default=ROOT / "db" / "queries")
     tables: List[Tuple] = Field(default_factory=list, exclude=True)
     players: List[Tuple] = Field(default_factory=list, exclude=True)
+    producer: Optional[BlackjackProducer] = Field(default=None, exclude=True)
 
     model_config = SettingsConfigDict(
         env_file=ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        arbitrary_types_allowed=True,
     )
 
     def load_fixtures(self):
@@ -136,6 +141,7 @@ class Setup(BaseSettings):
             players=active_players,
             bench=bench_players,
             rules=rules,
+            producer=self.producer,
             num_decks=num_decks,
             penetration=float(penetration),
             table_min=float(table_min),
@@ -148,11 +154,17 @@ class Setup(BaseSettings):
         print(f"Spawning {len(self.tables)} games with {max_workers} workers...")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             executor.map(self.run_game, self.tables)
+        self.producer.flush()
         print("All games completed")
 
 
 if __name__ == "__main__":
     setup = Setup(delay_seconds=0.05)
+    setup.producer = BlackjackProducer(
+        bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", ""),
+        schema_registry_url=os.getenv("SCHEMA_REGISTRY_URL", ""),
+        topic=os.getenv("KAFKA_TOPIC", "blackjack"),
+    )
     setup.load_fixtures()
     while True:
         setup.spawn_games(max_workers=50)

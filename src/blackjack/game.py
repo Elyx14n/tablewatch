@@ -1,6 +1,5 @@
 import uuid
 import time
-import os
 from typing import List, Optional, Dict
 import logging
 from .player import Player
@@ -34,6 +33,7 @@ class BlackjackGame:
         table_id: str,
         players: List[Player],
         rules: HouseRules,
+        producer: BlackjackProducer,
         num_decks: int = 6,
         penetration: float = 0.65,
         table_min: float = 25.0,
@@ -55,11 +55,7 @@ class BlackjackGame:
         self.current_round_id: str = ""
         self.shutdown_requested = False
         self.delay = delay_seconds
-        self.producer = BlackjackProducer(
-            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", ""),
-            schema_registry_url=os.getenv("SCHEMA_REGISTRY_URL", ""),
-            topic=os.getenv("KAFKA_TOPIC", "blackjack"),
-        )
+        self.producer = producer
 
     def shutdown(self) -> None:
         self.shutdown_requested = True
@@ -83,8 +79,6 @@ class BlackjackGame:
         except Exception:
             logger.exception("Blacjack simulation run failed")
             raise
-        finally:
-            self.producer.close()
 
     def has_active_players(self) -> bool:
         return bool(self.players or self.bench)
